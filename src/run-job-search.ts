@@ -8,7 +8,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as logger from './utils/logger';
-import { DATA_DIR, PRE_FILTER_SURVIVORS_FILE } from './config';
+import { DATA_DIR } from './config';
 
 // Import all script main functions
 import { main as discoverMain } from './01-discover';
@@ -253,7 +253,8 @@ export async function runPrePhase(runDir: string, dryRun: boolean): Promise<void
   let survivorCount = 0;
   if (!dryRun) {
     try {
-      const survivorsContent = await fs.readFile(PRE_FILTER_SURVIVORS_FILE, 'utf-8');
+      const survivorsPath = path.join(runDir, 'pre-filter-survivors.json');
+      const survivorsContent = await fs.readFile(survivorsPath, 'utf-8');
       const survivors = JSON.parse(survivorsContent) as unknown[];
       survivorCount = survivors.length;
     } catch {

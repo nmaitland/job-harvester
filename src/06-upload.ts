@@ -17,13 +17,13 @@ import {
   UPLOAD_RESULTS_FILE,
 } from './config';
 import * as logger from './utils/logger';
+import { getSecrets } from './utils/secrets';
+import { retry, withTimeout } from './utils/http';
 
 // Google Drive configuration
-const GOOGLE_DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID ?? '';
-const GOOGLE_SERVICE_ACCOUNT_KEY = process.env.GOOGLE_SERVICE_ACCOUNT_KEY ?? '';
-
-// OneDrive configuration
-const ONEDRIVE_ACCESS_TOKEN = process.env.ONEDRIVE_ACCESS_TOKEN ?? '';
+function getGoogleDriveFolderId(): string {
+  return process.env.GOOGLE_DRIVE_FOLDER_ID ?? '';
+}
 
 interface UploadLog {
   timestamp: string;
@@ -34,14 +34,14 @@ interface UploadLog {
 /**
  * Load credentials from environment
  */
-function loadCredentials(): {
+async function loadCredentials(): Promise<{
   googleServiceAccount: string;
   oneDriveToken: string;
-} {
-  return {
-    googleServiceAccount: GOOGLE_SERVICE_ACCOUNT_KEY,
-    oneDriveToken: ONEDRIVE_ACCESS_TOKEN,
-  };
+}> {
+  return getSecrets({
+    googleServiceAccount: 'GOOGLE_SERVICE_ACCOUNT_KEY',
+    oneDriveToken: 'ONEDRIVE_ACCESS_TOKEN',
+  });
 }
 
 /**
@@ -85,9 +85,14 @@ export async function uploadSpecsToOneDrive(
         const filePath = path.join(specsDir, file);
         const content = await fs.readFile(filePath);
 
-        await client
-          .api(`/me/drive/root:/${folderPath}/${file}:/content`)
-          .put(content);
+        await withTimeout(
+          retry(
+            () => client.api(`/me/drive/root:/${folderPath}/${file}:/content`).put(content),
+            { maxAttempts: 2, delayMs: 1000 }
+          ),
+          60000,
+          `OneDrive upload ${file}`
+        );
 
         result.count++;
         logger.info(`Uploaded to OneDrive: ${file}`);
@@ -103,9 +108,14 @@ export async function uploadSpecsToOneDrive(
       try {
         const content = await fs.readFile(filePath);
 
-        await client
-          .api(`/me/drive/root:/${folderPath}/${name}:/content`)
-          .put(content);
+        await withTimeout(
+          retry(
+            () => client.api(`/me/drive/root:/${folderPath}/${name}:/content`).put(content),
+            { maxAttempts: 2, delayMs: 1000 }
+          ),
+          60000,
+          `OneDrive upload ${name}`
+        );
 
         result.count++;
         logger.info(`Uploaded to OneDrive: ${name}`);
@@ -138,6 +148,7 @@ export async function uploadPdfsToGoogleDrive(
     return result;
   }
 
+  const GOOGLE_DRIVE_FOLDER_ID = getGoogleDriveFolderId();
   if (GOOGLE_DRIVE_FOLDER_ID === '') {
     logger.warn('Skipping Google Drive upload - no folder ID');
     return result;
@@ -163,17 +174,24 @@ export async function uploadPdfsToGoogleDrive(
         const fileName = path.basename(pdf.pdfPath);
         const fileContent = await fs.readFile(pdf.pdfPath);
 
-        const response = await drive.files.create({
-          requestBody: {
-            name: fileName,
-            parents: [GOOGLE_DRIVE_FOLDER_ID],
-          },
-          media: {
-            mimeType: 'application/pdf',
-            body: fileContent,
-          },
-          fields: 'id, webViewLink',
-        });
+        const response = await withTimeout(
+          retry(
+            () => drive.files.create({
+              requestBody: {
+                name: fileName,
+                parents: [GOOGLE_DRIVE_FOLDER_ID],
+              },
+              media: {
+                mimeType: 'application/pdf',
+                body: fileContent,
+              },
+              fields: 'id, webViewLink',
+            }),
+            { maxAttempts: 2, delayMs: 1000 }
+          ),
+          60000,
+          `Google Drive upload ${fileName}`
+        );
 
         const uploadResult: UploadResult = {
           jobId: pdf.jobId,
@@ -209,7 +227,7 @@ export async function uploadPdfsToGoogleDrive(
 export async function main(): Promise<void> {
   logger.info('Starting upload...');
 
-  const credentials = loadCredentials();
+  const credentials = await loadCredentials();
   const timestamp = new Date().toISOString();
   const folderName = timestamp.split('T')[0];
 
@@ -238,6 +256,9 @@ export async function main(): Promise<void> {
     try {
       const pdfContent = await fs.readFile(pdfResultsPath, 'utf-8');
       const pdfData = JSON.parse(pdfContent) as { pdfs: PDFResult[] };
+      if (!Array.isArray(pdfData.pdfs)) {
+        throw new Error('Invalid pdf-results.json: expected { pdfs: PDFResult[] }');
+      }
       pdfs = pdfData.pdfs.filter(p => p.pdfPath !== '');
     } catch {
       logger.warn('No PDF results found');

@@ -11,6 +11,7 @@ import { chromium } from 'playwright';
 import type { DiscoveredJob, DiscoveryOutput } from './types';
 import { DISCOVERED_JOBS_FILE, EMAILS_DIR, DATA_DIR } from './config';
 import * as logger from './utils/logger';
+import { getSecrets } from './utils/secrets';
 
 // Brave Search API configuration
 const BRAVE_API_BASE = 'https://api.search.brave.com/res/v1/web/search';
@@ -54,22 +55,22 @@ interface BraveSearchResponse {
 /**
  * Load secrets from environment
  */
-function loadSecrets(): {
+async function loadSecrets(): Promise<{
   braveApiKey: string;
   linkedinUsername: string;
   linkedinPassword: string;
   googleClientId: string;
   googleClientSecret: string;
   googleRefreshToken: string;
-} {
-  const secrets = {
-    braveApiKey: process.env.BRAVE_API_KEY ?? '',
-    linkedinUsername: process.env.LINKEDIN_USERNAME ?? '',
-    linkedinPassword: process.env.LINKEDIN_PASSWORD ?? '',
-    googleClientId: process.env.GOOGLE_CLIENT_ID ?? '',
-    googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
-    googleRefreshToken: process.env.GOOGLE_REFRESH_TOKEN ?? '',
-  };
+}> {
+  const secrets = await getSecrets({
+    braveApiKey: 'BRAVE_API_KEY',
+    linkedinUsername: 'LINKEDIN_USERNAME',
+    linkedinPassword: 'LINKEDIN_PASSWORD',
+    googleClientId: 'GOOGLE_CLIENT_ID',
+    googleClientSecret: 'GOOGLE_CLIENT_SECRET',
+    googleRefreshToken: 'GOOGLE_REFRESH_TOKEN',
+  });
 
   if (secrets.braveApiKey === '') {
     logger.warn('BRAVE_API_KEY not set - Brave search will be skipped');
@@ -474,7 +475,7 @@ export function deduplicateByUrl(jobs: DiscoveredJob[]): DiscoveredJob[] {
 export async function main(): Promise<void> {
   logger.info('Starting discovery...');
 
-  const secrets = loadSecrets();
+  const secrets = await loadSecrets();
   const timestamp = new Date().toISOString();
   const log: DiscoveryLog = {
     timestamp,

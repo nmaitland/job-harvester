@@ -19,10 +19,12 @@ import {
 } from './config';
 import { slugify } from './utils/slugify';
 import * as logger from './utils/logger';
+import { getSecret } from './utils/secrets';
+import { retry, sleep, withTimeout } from './utils/http';
 
 // Brightdata configuration - read at runtime for testability
-function getBrightdataApiKey(): string {
-  return process.env.BRIGHTDATA_API_KEY ?? '';
+async function getBrightdataApiKey(): Promise<string> {
+  return getSecret('BRIGHTDATA_API_KEY');
 }
 
 interface FetchResult {
@@ -69,7 +71,7 @@ export function routeByUrl(url: string): 'linkedin' | 'jobagent' | 'wellfound' |
  * Fetch LinkedIn job via Brightdata sync API
  */
 export async function fetchLinkedIn(job: DiscoveredJob): Promise<FetchResult> {
-  const BRIGHTDATA_API_KEY = getBrightdataApiKey();
+  const BRIGHTDATA_API_KEY = await getBrightdataApiKey();
   if (BRIGHTDATA_API_KEY === '') {
     return { success: false, error: 'Brightdata API key not configured', specText: '', jsonData: null };
   }
@@ -79,7 +81,7 @@ export async function fetchLinkedIn(job: DiscoveredJob): Promise<FetchResult> {
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const response = await fetch(
+      const response = await withTimeout(fetch(
         `${BRIGHTDATA_API_BASE}/datasets/v3/trigger?dataset_id=${BRIGHTDATA_DATASETS.LINKEDIN}&notify=false`,
         {
           method: 'POST',
@@ -91,7 +93,7 @@ export async function fetchLinkedIn(job: DiscoveredJob): Promise<FetchResult> {
             input: [{ url: job.url }],
           }),
         }
-      );
+      ), 120000, 'LinkedIn fetch');
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -132,7 +134,7 @@ export async function fetchLinkedIn(job: DiscoveredJob): Promise<FetchResult> {
  * Fetch JobAgent job via Brightdata DCA async
  */
 export async function fetchJobAgent(job: DiscoveredJob): Promise<FetchResult> {
-  const BRIGHTDATA_API_KEY = getBrightdataApiKey();
+  const BRIGHTDATA_API_KEY = await getBrightdataApiKey();
   if (BRIGHTDATA_API_KEY === '') {
     return { success: false, error: 'Brightdata API key not configured', specText: '', jsonData: null };
   }
@@ -145,7 +147,7 @@ export async function fetchJobAgent(job: DiscoveredJob): Promise<FetchResult> {
   for (const collector of collectors) {
     try {
       // Phase 1: Trigger
-      const triggerResponse = await fetch(
+      const triggerResponse = await withTimeout(fetch(
         `${BRIGHTDATA_DCA_BASE}/trigger?collector=${collector}&queue_next=1`,
         {
           method: 'POST',
@@ -155,7 +157,7 @@ export async function fetchJobAgent(job: DiscoveredJob): Promise<FetchResult> {
           },
           body: JSON.stringify([{ url: job.url }]),
         }
-      );
+      ), 60000, 'JobAgent trigger');
 
       if (!triggerResponse.ok) {
         const errorText = await triggerResponse.text();
@@ -178,14 +180,14 @@ export async function fetchJobAgent(job: DiscoveredJob): Promise<FetchResult> {
       for (let poll = 1; poll <= maxPolls; poll++) {
         await sleep(pollDelayMs);
 
-        const pollResponse = await fetch(
+        const pollResponse = await withTimeout(fetch(
           `${BRIGHTDATA_DCA_BASE}/dataset?id=${collectionId}`,
           {
             headers: {
               'Authorization': `Bearer ${BRIGHTDATA_API_KEY}`,
             },
           }
-        );
+        ), 60000, 'JobAgent poll');
 
         if (!pollResponse.ok) {
           logger.warn(`JobAgent poll HTTP ${pollResponse.status}`);
@@ -233,7 +235,7 @@ export async function fetchWellfound(job: DiscoveredJob): Promise<FetchResult> {
     return { success: false, error: 'wellfound_company_page', specText: '', jsonData: null };
   }
 
-  const BRIGHTDATA_API_KEY = getBrightdataApiKey();
+  const BRIGHTDATA_API_KEY = await getBrightdataApiKey();
   if (BRIGHTDATA_API_KEY === '') {
     return { success: false, error: 'Brightdata API key not configured', specText: '', jsonData: null };
   }
@@ -244,7 +246,7 @@ export async function fetchWellfound(job: DiscoveredJob): Promise<FetchResult> {
   for (let attempt = 1; attempt <= maxTriggerAttempts; attempt++) {
     try {
       // Phase 1: Trigger
-      const triggerResponse = await fetch(
+      const triggerResponse = await withTimeout(fetch(
         `${BRIGHTDATA_DCA_BASE}/trigger?collector=${collector}&queue_next=1`,
         {
           method: 'POST',
@@ -254,7 +256,7 @@ export async function fetchWellfound(job: DiscoveredJob): Promise<FetchResult> {
           },
           body: JSON.stringify([{ url: job.url }]),
         }
-      );
+      ), 60000, 'Wellfound trigger');
 
       if (!triggerResponse.ok) {
         const errorText = await triggerResponse.text();
@@ -277,14 +279,14 @@ export async function fetchWellfound(job: DiscoveredJob): Promise<FetchResult> {
       for (let poll = 1; poll <= maxPolls; poll++) {
         await sleep(pollDelayMs);
 
-        const pollResponse = await fetch(
+        const pollResponse = await withTimeout(fetch(
           `${BRIGHTDATA_DCA_BASE}/dataset?id=${collectionId}`,
           {
             headers: {
               'Authorization': `Bearer ${BRIGHTDATA_API_KEY}`,
             },
           }
-        );
+        ), 60000, 'Wellfound poll');
 
         if (!pollResponse.ok) {
           logger.warn(`Wellfound poll HTTP ${pollResponse.status}`);
@@ -327,7 +329,7 @@ export async function fetchWeb(job: DiscoveredJob): Promise<FetchResult> {
 
   try {
     const page = await browser.newPage();
-    await page.goto(job.url, { waitUntil: 'networkidle' });
+    await withTimeout(page.goto(job.url, { waitUntil: 'networkidle' }), 90000, 'Web fetch page.goto');
 
     // Get text content
     const text = await page.evaluate((): string => {
@@ -399,13 +401,6 @@ export function extractWellfoundText(data: unknown[]): string {
 }
 
 /**
- * Sleep utility
- */
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-/**
  * Main entry point
  */
 export async function main(): Promise<void> {
@@ -414,7 +409,10 @@ export async function main(): Promise<void> {
   try {
     // Read discovered jobs
     const discoveredContent = await fs.readFile(DISCOVERED_JOBS_FILE, 'utf-8');
-    const discovered = JSON.parse(discoveredContent) as { jobs: DiscoveredJob[] };
+    const discovered = JSON.parse(discoveredContent) as { jobs?: DiscoveredJob[] };
+    if (!Array.isArray(discovered.jobs)) {
+      throw new Error('Invalid discovered jobs input: expected { jobs: DiscoveredJob[] }');
+    }
 
     logger.info(`Loaded ${discovered.jobs.length} discovered jobs`);
 
@@ -434,16 +432,16 @@ export async function main(): Promise<void> {
 
       switch (fetcher) {
         case 'linkedin':
-          result = await fetchLinkedIn(job);
+          result = await retry(() => fetchLinkedIn(job), { maxAttempts: 2, delayMs: 1000 });
           break;
         case 'jobagent':
-          result = await fetchJobAgent(job);
+          result = await retry(() => fetchJobAgent(job), { maxAttempts: 2, delayMs: 1000 });
           break;
         case 'wellfound':
-          result = await fetchWellfound(job);
+          result = await retry(() => fetchWellfound(job), { maxAttempts: 2, delayMs: 1000 });
           break;
         case 'web':
-          result = await fetchWeb(job);
+          result = await retry(() => fetchWeb(job), { maxAttempts: 2, delayMs: 1000 });
           break;
         default:
           result = { success: false, error: 'Unknown fetcher', specText: '', jsonData: null };
