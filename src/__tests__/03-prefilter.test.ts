@@ -323,7 +323,7 @@ describe('runPreFilter', () => {
     const result = await runPreFilter(specs);
 
     expect(result.survivors).toHaveLength(1);
-    expect(result.survivors[0]?.jobId).toBe('1');
+    expect(result.survivors[0]?.id).toBe('1');
     expect(result.rejections).toHaveLength(1);
     expect(result.rejections[0]?.jobId).toBe('2');
     expect(result.stats.total).toBe(2);

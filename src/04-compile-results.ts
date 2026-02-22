@@ -8,7 +8,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as glob from 'glob';
-import type { FilterVerdict, JobScore, CompiledJob, CompileOutput, RejectionReason } from './types';
+import type { FilterVerdict, JobScore, CompiledJob, CompileOutput, RejectionReason, JobSpec } from './types';
 import { PRE_FILTER_SURVIVORS_FILE, PRE_FILTER_REJECTIONS_FILE, SCORES_DIR, COMPILED_RESULTS_FILE, ALL_REJECTIONS_FILE } from './config';
 import { slugify } from './utils/slugify';
 import * as logger from './utils/logger';
@@ -95,7 +95,7 @@ export async function compileResults(): Promise<CompileOutput> {
   
   // Read pre-filter survivors
   const survivorsContent = await fs.readFile(PRE_FILTER_SURVIVORS_FILE, 'utf-8');
-  const survivors = JSON.parse(survivorsContent) as FilterVerdict[];
+  const survivors = JSON.parse(survivorsContent) as JobSpec[];
   
   // Read pre-filter rejections
   const preFilterRejectionsContent = await fs.readFile(PRE_FILTER_REJECTIONS_FILE, 'utf-8');
@@ -107,13 +107,13 @@ export async function compileResults(): Promise<CompileOutput> {
   
   // Process each survivor
   for (const survivor of survivors) {
-    const verdictFile = await findVerdictFile(survivor.jobId, survivor.company, SCORES_DIR);
+    const verdictFile = await findVerdictFile(survivor.id, survivor.company, SCORES_DIR);
     
     if (verdictFile === null) {
       // Missing verdict → REVIEW (conservative)
       logger.warn(`Missing AI verdict for ${survivor.company} - marking as REVIEW`);
-      review.push({
-        jobId: survivor.jobId,
+        review.push({
+        jobId: survivor.id,
         company: survivor.company,
         title: survivor.title,
         url: survivor.url,
@@ -134,7 +134,7 @@ export async function compileResults(): Promise<CompileOutput> {
       // Failed to read score → REVIEW
       logger.warn(`Failed to read AI verdict for ${survivor.company} - marking as REVIEW`);
       review.push({
-        jobId: survivor.jobId,
+        jobId: survivor.id,
         company: survivor.company,
         title: survivor.title,
         url: survivor.url,
@@ -152,11 +152,11 @@ export async function compileResults(): Promise<CompileOutput> {
     const status = applyThreshold(jobScore.score);
     
     const compiledJob: CompiledJob = {
-      jobId: survivor.jobId,
+      jobId: survivor.id,
       company: survivor.company,
       title: survivor.title,
       url: survivor.url,
-      specText: '', // Will be filled from spec file
+      specText: survivor.specText,
       score: jobScore.score,
       reasoning: jobScore.reasoning,
       rejectionReason: undefined,
@@ -171,8 +171,8 @@ export async function compileResults(): Promise<CompileOutput> {
       review.push(compiledJob);
     } else {
       // REJECT
-      aiRejections.push({
-        jobId: survivor.jobId,
+        aiRejections.push({
+        jobId: survivor.id,
         company: survivor.company,
         title: survivor.title,
         url: survivor.url,
@@ -207,7 +207,7 @@ export async function compileResults(): Promise<CompileOutput> {
     timestamp,
     stats: {
       total: survivors.length,
-      scored: passed.length + review.length,
+      scored: survivors.length,
       rejectedPreFilter: preFilterRejections.length,
     },
   };
