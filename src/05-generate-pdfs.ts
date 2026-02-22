@@ -162,7 +162,10 @@ export async function main(): Promise<void> {
   try {
     // Read compiled results
     const compiledContent = await fs.readFile(COMPILED_RESULTS_FILE, 'utf-8');
-    const compiled = JSON.parse(compiledContent) as { jobs: CompiledJob[] };
+    const compiled = JSON.parse(compiledContent) as { jobs?: CompiledJob[] };
+    if (!Array.isArray(compiled.jobs)) {
+      throw new Error('Invalid compile results input: expected { jobs: CompiledJob[] }');
+    }
 
     logger.info(`Loaded ${compiled.jobs.length} compiled jobs`);
 

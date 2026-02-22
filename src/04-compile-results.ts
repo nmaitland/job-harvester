@@ -96,10 +96,16 @@ export async function compileResults(): Promise<CompileOutput> {
   // Read pre-filter survivors
   const survivorsContent = await fs.readFile(PRE_FILTER_SURVIVORS_FILE, 'utf-8');
   const survivors = JSON.parse(survivorsContent) as JobSpec[];
+  if (!Array.isArray(survivors)) {
+    throw new Error('Invalid pre-filter survivors input: expected JobSpec[]');
+  }
   
   // Read pre-filter rejections
   const preFilterRejectionsContent = await fs.readFile(PRE_FILTER_REJECTIONS_FILE, 'utf-8');
   const preFilterRejections = JSON.parse(preFilterRejectionsContent) as FilterVerdict[];
+  if (!Array.isArray(preFilterRejections)) {
+    throw new Error('Invalid pre-filter rejections input: expected FilterVerdict[]');
+  }
   
   const passed: CompiledJob[] = [];
   const review: CompiledJob[] = [];
