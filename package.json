@@ -1,0 +1,52 @@
+{
+  "name": "job-harvester",
+  "version": "1.0.0",
+  "description": "TypeScript pipeline for automated job search",
+  "main": "dist/run-job-search.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "discover": "node dist/01-discover.js",
+    "fetch-specs": "node dist/02-fetch-specs.js",
+    "prefilter": "node dist/03-prefilter.js",
+    "compile": "node dist/04-compile-results.js",
+    "generate-pdfs": "node dist/05-generate-pdfs.js",
+    "upload": "node dist/06-upload.js",
+    "run": "node dist/run-job-search.js",
+    "dev:discover": "ts-node src/01-discover.ts",
+    "dev:fetch-specs": "ts-node src/02-fetch-specs.ts",
+    "dev:prefilter": "ts-node src/03-prefilter.ts",
+    "dev:compile": "ts-node src/04-compile-results.ts",
+    "dev:generate-pdfs": "ts-node src/05-generate-pdfs.ts",
+    "dev:upload": "ts-node src/06-upload.ts",
+    "dev:run": "ts-node src/run-job-search.ts"
+  },
+  "keywords": ["job-search", "automation", "typescript"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/glob": "^8.1.0",
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.11.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.56.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "@1password/op-js": "^0.1.0",
+    "@azure/identity": "^4.0.0",
+    "@microsoft/microsoft-graph-client": "^3.0.0",
+    "glob": "^10.3.0",
+    "googleapis": "^131.0.0",
+    "playwright": "^1.41.0"
+  }
+}
