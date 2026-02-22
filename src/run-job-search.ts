@@ -197,6 +197,8 @@ export async function writeRunManifest(runDir: string, phase: Phase): Promise<vo
  * Run a script
  */
 export async function runScript(scriptName: string, _runDir: string, dryRun: boolean): Promise<void> {
+  process.env.JOB_HARVESTER_DATA_DIR = _runDir;
+
   if (dryRun) {
     logger.info(`[DRY RUN] Would run ${scriptName}`);
     return;
@@ -240,6 +242,7 @@ export async function runScript(scriptName: string, _runDir: string, dryRun: boo
  */
 export async function runPrePhase(runDir: string, dryRun: boolean): Promise<void> {
   logger.info('=== Pre-AI Pipeline ===');
+  process.env.JOB_HARVESTER_DATA_DIR = runDir;
 
   await writeRunManifest(runDir, 'pre');
   await runScript('01-discover', runDir, dryRun);
@@ -273,6 +276,7 @@ export async function runPrePhase(runDir: string, dryRun: boolean): Promise<void
  */
 export async function runPostPhase(runDir: string, dryRun: boolean): Promise<void> {
   logger.info('=== Post-AI Pipeline ===');
+  process.env.JOB_HARVESTER_DATA_DIR = runDir;
 
   await validatePostPhase(runDir);
   await writeRunManifest(runDir, 'post');

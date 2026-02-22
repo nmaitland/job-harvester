@@ -73,7 +73,7 @@ export interface FilterVerdict {
 }
 
 export interface PreFilterOutput {
-  survivors: FilterVerdict[];
+  survivors: JobSpec[];
   rejections: FilterVerdict[];
   timestamp: string;
   stats: {

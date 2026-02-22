@@ -169,7 +169,7 @@ export async function runPreFilter(specs: JobSpec[]): Promise<PreFilterOutput> {
     loadProcessedUrls(PROCESSED_JOBS_FILE),
   ]);
   
-  const survivors: FilterVerdict[] = [];
+  const survivors: JobSpec[] = [];
   const rejections: FilterVerdict[] = [];
   const byReason: Record<RejectionReason, number> = {
     fetch_failed: 0,
@@ -195,7 +195,7 @@ export async function runPreFilter(specs: JobSpec[]): Promise<PreFilterOutput> {
       rejections.push(verdict);
       byReason[rejectionReason]++;
     } else {
-      survivors.push(verdict);
+      survivors.push(spec);
     }
   }
   
@@ -223,7 +223,8 @@ export async function main(): Promise<void> {
   try {
     // Read fetched specs
     const specsContent = await fs.readFile(FETCHED_SPECS_FILE, 'utf-8');
-    const specs = JSON.parse(specsContent) as JobSpec[];
+    const parsed = JSON.parse(specsContent) as JobSpec[] | { specs?: JobSpec[] };
+    const specs = Array.isArray(parsed) ? parsed : (parsed.specs ?? []);
     
     logger.info(`Loaded ${specs.length} job specs from ${FETCHED_SPECS_FILE}`);
     

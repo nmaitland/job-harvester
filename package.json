@@ -11,6 +11,8 @@
     "test:coverage": "jest --coverage",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
+    "check-types": "tsc --noEmit",
+    "validate": "npm run check-types && npm run lint && npm test",
     "discover": "node dist/01-discover.js",
     "fetch-specs": "node dist/02-fetch-specs.js",
     "prefilter": "node dist/03-prefilter.js",

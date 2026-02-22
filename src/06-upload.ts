@@ -14,6 +14,7 @@ import {
   SPECS_DIR,
   COMPILED_RESULTS_FILE,
   ALL_REJECTIONS_FILE,
+  UPLOAD_RESULTS_FILE,
 } from './config';
 import * as logger from './utils/logger';
 
@@ -265,7 +266,7 @@ export async function main(): Promise<void> {
     };
 
     await fs.writeFile(
-      path.join(PDFS_DIR, 'upload-results.json'),
+      UPLOAD_RESULTS_FILE,
       JSON.stringify(output, null, 2),
       'utf-8'
     );

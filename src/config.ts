@@ -5,11 +5,19 @@
 
 import * as path from 'path';
 
+function resolveDataDir(): string {
+  const envDir = process.env.JOB_HARVESTER_DATA_DIR;
+  if (envDir !== undefined && envDir !== '') {
+    return envDir;
+  }
+  return path.join(__dirname, '..', '..', 'data');
+}
+
 // ============================================================================
 // Directory Paths
 // ============================================================================
 
-export const DATA_DIR = path.join(__dirname, '..', '..', 'data');
+export const DATA_DIR = resolveDataDir();
 export const EMAILS_DIR = path.join(DATA_DIR, 'emails');
 export const SPECS_DIR = path.join(DATA_DIR, 'specs');
 export const SCORES_DIR = path.join(DATA_DIR, 'job-scores');
@@ -26,6 +34,7 @@ export const PRE_FILTER_SURVIVORS_FILE = path.join(DATA_DIR, 'pre-filter-survivo
 export const PRE_FILTER_REJECTIONS_FILE = path.join(DATA_DIR, 'pre-filter-rejections.json');
 export const COMPILED_RESULTS_FILE = path.join(DATA_DIR, 'compile-results.json');
 export const ALL_REJECTIONS_FILE = path.join(DATA_DIR, 'all-rejections.json');
+export const UPLOAD_RESULTS_FILE = path.join(DATA_DIR, 'upload-results.json');
 export const APPLIED_COMPANIES_FILE = path.join(__dirname, '..', '..', 'applied-companies.txt');
 export const CV_KEYWORDS_FILE = path.join(__dirname, '..', '..', 'cv-keywords.md');
 
