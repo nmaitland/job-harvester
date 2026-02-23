@@ -167,10 +167,13 @@ export async function uploadPdfsToGoogleDrive(
     // Parse service account key
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const credentials: { client_email: string; private_key: string } = JSON.parse(serviceAccountKey);
+    const normalizedPrivateKey = credentials.private_key.includes('\\n')
+      ? credentials.private_key.replace(/\\n/g, '\n')
+      : credentials.private_key;
 
     const auth = new google.auth.JWT({
       email: credentials.client_email,
-      key: credentials.private_key,
+      key: normalizedPrivateKey,
       scopes: ['https://www.googleapis.com/auth/drive.file'],
       subject: impersonatedUser,
     });

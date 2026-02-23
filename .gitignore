@@ -6,3 +6,4 @@ dist/
 .env.test
 .env.dev
 .google-credentials.json
+temp/
