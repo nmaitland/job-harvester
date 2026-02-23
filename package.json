@@ -27,7 +27,8 @@
     "dev:compile": "ts-node src/04-compile-results.ts",
     "dev:generate-pdfs": "ts-node src/05-generate-pdfs.ts",
     "dev:upload": "ts-node src/06-upload.ts",
-    "dev:run": "ts-node src/run-job-search.ts"
+    "dev:run": "ts-node src/run-job-search.ts",
+    "dev:google-oauth-bootstrap": "ts-node src/google-oauth-bootstrap.ts"
   },
   "keywords": ["job-search", "automation", "typescript"],
   "author": "",

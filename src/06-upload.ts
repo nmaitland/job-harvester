@@ -19,6 +19,7 @@ import {
 import * as logger from './utils/logger';
 import { getSecrets } from './utils/secrets';
 import { retry, withTimeout } from './utils/http';
+import { loadEnvFileIfProvided } from './utils/env-loader';
 
 // Google Drive configuration
 function getGoogleDriveFolderId(): string {
@@ -36,10 +37,12 @@ interface UploadLog {
  */
 async function loadCredentials(): Promise<{
   googleServiceAccount: string;
+  googleDriveImpersonatedUser: string;
   oneDriveToken: string;
 }> {
   return getSecrets({
     googleServiceAccount: 'GOOGLE_SERVICE_ACCOUNT_KEY',
+    googleDriveImpersonatedUser: 'GOOGLE_DRIVE_IMPERSONATED_USER',
     oneDriveToken: 'ONEDRIVE_ACCESS_TOKEN',
   });
 }
@@ -139,12 +142,18 @@ export async function uploadSpecsToOneDrive(
  */
 export async function uploadPdfsToGoogleDrive(
   serviceAccountKey: string,
+  impersonatedUser: string,
   pdfs: PDFResult[]
 ): Promise<{ count: number; errors: string[]; uploads: UploadResult[] }> {
   const result = { count: 0, errors: [] as string[], uploads: [] as UploadResult[] };
 
   if (serviceAccountKey === '') {
     logger.warn('Skipping Google Drive upload - no service account key');
+    return result;
+  }
+
+  if (impersonatedUser === '') {
+    logger.warn('Skipping Google Drive upload - no impersonated user');
     return result;
   }
 
@@ -159,11 +168,11 @@ export async function uploadPdfsToGoogleDrive(
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const credentials: { client_email: string; private_key: string } = JSON.parse(serviceAccountKey);
 
-    // Create auth client
-    const auth = new google.auth.GoogleAuth({
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      credentials,
+    const auth = new google.auth.JWT({
+      email: credentials.client_email,
+      key: credentials.private_key,
       scopes: ['https://www.googleapis.com/auth/drive.file'],
+      subject: impersonatedUser,
     });
 
     const drive = google.drive({ version: 'v3', auth });
@@ -225,6 +234,7 @@ export async function uploadPdfsToGoogleDrive(
  * Main entry point
  */
 export async function main(): Promise<void> {
+  await loadEnvFileIfProvided(process.argv.slice(2));
   logger.info('Starting upload...');
 
   const credentials = await loadCredentials();
@@ -267,6 +277,7 @@ export async function main(): Promise<void> {
     // Upload PDFs to Google Drive
     const googleDriveResult = await uploadPdfsToGoogleDrive(
       credentials.googleServiceAccount,
+      credentials.googleDriveImpersonatedUser,
       pdfs
     );
     log.googledrive = {

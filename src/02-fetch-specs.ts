@@ -21,6 +21,7 @@ import { slugify } from './utils/slugify';
 import * as logger from './utils/logger';
 import { getSecret } from './utils/secrets';
 import { retry, sleep, withTimeout } from './utils/http';
+import { loadEnvFileIfProvided } from './utils/env-loader';
 
 // Brightdata configuration - read at runtime for testability
 async function getBrightdataApiKey(): Promise<string> {
@@ -404,6 +405,7 @@ export function extractWellfoundText(data: unknown[]): string {
  * Main entry point
  */
 export async function main(): Promise<void> {
+  await loadEnvFileIfProvided(process.argv.slice(2));
   logger.info('Starting fetch specs...');
 
   try {

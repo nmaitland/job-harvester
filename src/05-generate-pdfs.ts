@@ -11,6 +11,7 @@ import type { CompiledJob, PDFResult, PDFOutput } from './types';
 import { COMPILED_RESULTS_FILE, PDFS_DIR, PDF_CONFIG } from './config';
 import { slugify } from './utils/slugify';
 import * as logger from './utils/logger';
+import { loadEnvFileIfProvided } from './utils/env-loader';
 
 interface JobWithTier extends CompiledJob {
   tier: 'passed' | 'review';
@@ -157,6 +158,7 @@ export async function generateJobPdf(
  * Main entry point
  */
 export async function main(): Promise<void> {
+  await loadEnvFileIfProvided(process.argv.slice(2));
   logger.info('Starting PDF generation...');
 
   try {
