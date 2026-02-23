@@ -9,9 +9,6 @@ import * as path from 'path';
 import { chromium } from 'playwright';
 import type { DiscoveredJob, JobSpec, FetchOutput } from './types';
 import {
-  DISCOVERED_JOBS_FILE,
-  FETCHED_SPECS_FILE,
-  SPECS_DIR,
   BRIGHTDATA_API_BASE,
   BRIGHTDATA_DCA_BASE,
   BRIGHTDATA_DATASETS,
@@ -28,6 +25,26 @@ async function getBrightdataApiKey(): Promise<string> {
   return getSecret('BRIGHTDATA_API_KEY');
 }
 
+function resolveDataDir(): string {
+  const envDir = process.env.JOB_HARVESTER_WORK_DIR;
+  if (envDir === undefined || envDir === '') {
+    throw new Error('JOB_HARVESTER_WORK_DIR is required. Set it in environment or via --env-file.');
+  }
+  return envDir;
+}
+
+function getDiscoveredJobsFile(): string {
+  return path.join(resolveDataDir(), 'discovered-jobs.json');
+}
+
+function getFetchedSpecsFile(): string {
+  return path.join(resolveDataDir(), 'fetched-specs.json');
+}
+
+function getSpecsDir(): string {
+  return path.join(resolveDataDir(), 'specs');
+}
+
 interface FetchResult {
   success: boolean;
   error: string | undefined;
@@ -38,6 +55,7 @@ interface FetchResult {
 interface BrightdataResponse {
   collection_id?: string;
   error?: string;
+  snapshot_id?: string;
 }
 
 interface BrightdataDatasetItem {
@@ -106,7 +124,11 @@ export async function fetchLinkedIn(job: DiscoveredJob): Promise<FetchResult> {
         return { success: false, error: `HTTP ${response.status}: ${errorText}`, specText: '', jsonData: null };
       }
 
-      const data = await response.json() as BrightdataDatasetItem[];
+      const triggerData = await response.json() as unknown;
+      const rawData = await resolveLinkedInPayload(BRIGHTDATA_API_KEY, triggerData);
+      const data = Array.isArray(rawData)
+        ? rawData as BrightdataDatasetItem[]
+        : [rawData as BrightdataDatasetItem];
 
       // Check for crawler error
       if (data[0]?.error !== undefined) {
@@ -115,11 +137,20 @@ export async function fetchLinkedIn(job: DiscoveredJob): Promise<FetchResult> {
           await sleep(delayMs);
           continue;
         }
-        return { success: false, error: `Crawler error: ${data[0].error}`, specText: '', jsonData: data };
+        return { success: false, error: `Crawler error: ${data[0].error}`, specText: '', jsonData: rawData };
       }
 
-      const specText = extractLinkedInText(data);
-      return { success: true, error: undefined, specText, jsonData: data };
+      const specText = extractLinkedInText(rawData);
+      if (specText === '') {
+        const first = data[0];
+        logger.warn(
+          `LinkedIn extract produced empty specText for ${job.url}. `
+          + `Fields present: job_description_formatted=${first?.job_description_formatted !== undefined}, `
+          + `job_summary=${first?.job_summary !== undefined}, `
+          + `job_description=${first?.job_description !== undefined}`
+        );
+      }
+      return { success: true, error: undefined, specText, jsonData: rawData };
     } catch (error) {
       logger.error(`LinkedIn fetch error (attempt ${attempt}): ${error instanceof Error ? error.message : String(error)}`);
       if (attempt < maxRetries) {
@@ -352,15 +383,167 @@ export async function fetchWeb(job: DiscoveredJob): Promise<FetchResult> {
 /**
  * Extract text from LinkedIn response
  */
-export function extractLinkedInText(data: unknown[]): string {
-  if (!Array.isArray(data) || data.length === 0) {
+export function extractLinkedInText(data: unknown): string {
+  const items = Array.isArray(data) ? data : [data];
+  if (items.length === 0 || items[0] === undefined || items[0] === null) {
     return '';
   }
 
-  const job = data[0] as BrightdataDatasetItem;
-  const description = job.job_description_formatted ?? job.job_summary ?? '';
-  // Strip HTML tags
-  return description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const job = items[0] as BrightdataDatasetItem;
+  const description =
+    job.job_description_formatted
+    ?? job.job_summary
+    ?? job.job_description
+    ?? '';
+  const normalizedDescription = description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (normalizedDescription !== '') {
+    return normalizedDescription;
+  }
+
+  // Fallback: include all textual fields so downstream AI can still reason on the payload.
+  const fallbackText = extractAllText(items[0]);
+  if (fallbackText !== '') {
+    return fallbackText;
+  }
+
+  // Final fallback: raw JSON for AI consumption/debugging.
+  try {
+    return JSON.stringify(items[0], null, 2);
+  } catch {
+    // Continue to empty result if serialization fails.
+  }
+
+  // No useful text could be extracted.
+  return '';
+}
+
+async function resolveLinkedInPayload(apiKey: string, triggerData: unknown): Promise<unknown> {
+  if (triggerData === null || typeof triggerData !== 'object') {
+    return triggerData;
+  }
+
+  const snapshotId = (triggerData as BrightdataResponse).snapshot_id;
+  if (snapshotId === undefined || snapshotId === '') {
+    return triggerData;
+  }
+
+  const snapshotUrls = [
+    `${BRIGHTDATA_API_BASE}/datasets/v3/snapshot/${snapshotId}?format=json`,
+    `${BRIGHTDATA_API_BASE}/datasets/v3/snapshot/${snapshotId}`,
+  ];
+
+  const maxSnapshotPolls = 8;
+  const snapshotPollDelayMs = 10000;
+
+  for (let poll = 1; poll <= maxSnapshotPolls; poll++) {
+    for (const snapshotUrl of snapshotUrls) {
+      try {
+        const snapshotResponse = await withTimeout(fetch(snapshotUrl, {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            Accept: 'application/json',
+          },
+        }), 120000, `LinkedIn snapshot ${snapshotId}`);
+
+        if (!snapshotResponse.ok) {
+          logger.warn(`LinkedIn snapshot fetch HTTP ${snapshotResponse.status} for ${snapshotUrl}`);
+          continue;
+        }
+
+        const contentType = snapshotResponse.headers.get('content-type') ?? '';
+        if (contentType.includes('application/json')) {
+          const jsonBody = await snapshotResponse.json() as unknown;
+          if (isSnapshotPendingPayload(jsonBody)) {
+            logger.info(`LinkedIn snapshot ${snapshotId} pending (poll ${poll}/${maxSnapshotPolls})`);
+            continue;
+          }
+          return jsonBody;
+        }
+
+        const textBody = await snapshotResponse.text();
+        const normalized = textBody.trim().toLowerCase();
+        if (normalized.includes('snapshot is not ready') || normalized === 'running' || normalized === 'starting') {
+          logger.info(`LinkedIn snapshot ${snapshotId} not ready yet (poll ${poll}/${maxSnapshotPolls})`);
+          continue;
+        }
+
+        // Attempt parse even if content-type is not set properly.
+        try {
+          const parsed = JSON.parse(textBody) as unknown;
+          if (isSnapshotPendingPayload(parsed)) {
+            logger.info(`LinkedIn snapshot ${snapshotId} pending (poll ${poll}/${maxSnapshotPolls})`);
+            continue;
+          }
+          return parsed;
+        } catch {
+          logger.warn(`LinkedIn snapshot returned non-JSON body for ${snapshotUrl}: ${textBody.slice(0, 120)}`);
+        }
+      } catch (error) {
+        logger.warn(
+          `LinkedIn snapshot fetch failed for ${snapshotUrl}: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+
+    if (poll < maxSnapshotPolls) {
+      await sleep(snapshotPollDelayMs);
+    }
+  }
+
+  throw new Error(`LinkedIn snapshot ${snapshotId} not ready after ${maxSnapshotPolls} polls`);
+}
+
+function isSnapshotPendingPayload(payload: unknown): boolean {
+  if (payload === null || payload === undefined) {
+    return true;
+  }
+
+  if (typeof payload === 'string') {
+    const normalized = payload.trim().toLowerCase();
+    return normalized === 'starting' || normalized === 'running' || normalized.includes('snapshot is not ready');
+  }
+
+  if (Array.isArray(payload)) {
+    return false;
+  }
+
+  if (typeof payload === 'object') {
+    const status = String((payload as Record<string, unknown>).status ?? '').toLowerCase();
+    const message = String((payload as Record<string, unknown>).message ?? '').toLowerCase();
+    return status === 'starting' || status === 'running' || message.includes('snapshot is not ready');
+  }
+
+  return false;
+}
+
+function extractAllText(value: unknown): string {
+  const parts: string[] = [];
+
+  const walk = (node: unknown): void => {
+    if (typeof node === 'string') {
+      const trimmed = node.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (trimmed !== '') {
+        parts.push(trimmed);
+      }
+      return;
+    }
+
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        walk(item);
+      }
+      return;
+    }
+
+    if (node !== null && typeof node === 'object') {
+      for (const nested of Object.values(node as Record<string, unknown>)) {
+        walk(nested);
+      }
+    }
+  };
+
+  walk(value);
+  return parts.join('\n\n');
 }
 
 /**
@@ -406,11 +589,14 @@ export function extractWellfoundText(data: unknown[]): string {
  */
 export async function main(): Promise<void> {
   await loadEnvFileIfProvided(process.argv.slice(2));
+  const discoveredJobsFile = getDiscoveredJobsFile();
+  const fetchedSpecsFile = getFetchedSpecsFile();
+  const specsDir = getSpecsDir();
   logger.info('Starting fetch specs...');
 
   try {
     // Read discovered jobs
-    const discoveredContent = await fs.readFile(DISCOVERED_JOBS_FILE, 'utf-8');
+    const discoveredContent = await fs.readFile(discoveredJobsFile, 'utf-8');
     const discovered = JSON.parse(discoveredContent) as { jobs?: DiscoveredJob[] };
     if (!Array.isArray(discovered.jobs)) {
       throw new Error('Invalid discovered jobs input: expected { jobs: DiscoveredJob[] }');
@@ -419,7 +605,7 @@ export async function main(): Promise<void> {
     logger.info(`Loaded ${discovered.jobs.length} discovered jobs`);
 
     // Ensure specs directory exists
-    await fs.mkdir(SPECS_DIR, { recursive: true });
+    await fs.mkdir(specsDir, { recursive: true });
 
     const specs: JobSpec[] = [];
     let successCount = 0;
@@ -450,12 +636,13 @@ export async function main(): Promise<void> {
       }
 
       const timestamp = new Date().toISOString();
-      const baseName = `${timestamp.split('T')[0]}-${slugify(job.company)}`;
+      const safeTimestamp = timestamp.replace(/[:.]/g, '-');
+      const baseName = `${safeTimestamp}-${slugify(job.company)}-${slugify(job.id)}`;
 
       // Write spec text
       if (result.success) {
         await fs.writeFile(
-          path.join(SPECS_DIR, `${baseName}.txt`),
+          path.join(specsDir, `${baseName}.txt`),
           result.specText,
           'utf-8'
         );
@@ -463,7 +650,7 @@ export async function main(): Promise<void> {
         // Write JSON data if available
         if (result.jsonData !== null) {
           await fs.writeFile(
-            path.join(SPECS_DIR, `${baseName}.json`),
+            path.join(specsDir, `${baseName}.json`),
             JSON.stringify(result.jsonData, null, 2),
             'utf-8'
           );
@@ -506,7 +693,7 @@ export async function main(): Promise<void> {
     };
 
     await fs.writeFile(
-      FETCHED_SPECS_FILE,
+      fetchedSpecsFile,
       JSON.stringify(output, null, 2),
       'utf-8'
     );

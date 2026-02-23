@@ -9,11 +9,30 @@ import * as path from 'path';
 import { google } from 'googleapis';
 import { chromium } from 'playwright';
 import type { DiscoveredJob, DiscoveryOutput } from './types';
-import { DISCOVERED_JOBS_FILE, EMAILS_DIR, DATA_DIR } from './config';
 import * as logger from './utils/logger';
 import { getSecrets } from './utils/secrets';
 import { loadEnvFileIfProvided } from './utils/env-loader';
 import { sleep } from './utils/http';
+
+function resolveDataDir(): string {
+  const envDir = process.env.JOB_HARVESTER_WORK_DIR;
+  if (envDir === undefined || envDir === '') {
+    throw new Error('JOB_HARVESTER_WORK_DIR is required. Set it in environment or via --env-file.');
+  }
+  return envDir;
+}
+
+function getDataDir(): string {
+  return resolveDataDir();
+}
+
+function getEmailsDir(): string {
+  return path.join(resolveDataDir(), 'emails');
+}
+
+function getDiscoveredJobsFile(): string {
+  return path.join(resolveDataDir(), 'discovered-jobs.json');
+}
 
 // Brave Search API configuration
 function getBraveApiBase(): string {
@@ -96,9 +115,9 @@ function getBraveQueries(): string[] {
   const raw = process.env.BRAVE_QUERIES;
   if (raw === undefined || raw.trim() === '') {
     return [
-      'software engineer jobs Switzerland',
-      'full stack developer jobs Switzerland',
-      'CTO jobs Switzerland',
+      'software engineering manager advert zurich switzerland',
+      'Solution Architect advert zurich switzerland',
+      'CTO advert zurich Switzerland',
     ];
   }
 
@@ -489,6 +508,7 @@ export async function downloadGmailEmails(
   impersonatedUser: string
 ): Promise<GmailEmailEntry[]> {
   const entries: GmailEmailEntry[] = [];
+  const emailsDir = getEmailsDir();
   const gmailUserId = getGmailUserId();
   const gmailLabel = getGmailLabel();
   const gmailLabelQuery = toGmailLabelQuery(gmailLabel);
@@ -531,7 +551,7 @@ export async function downloadGmailEmails(
     logger.info(`Gmail: ${messages.length} unread messages found`);
 
     // Ensure emails directory exists
-    await fs.mkdir(EMAILS_DIR, { recursive: true });
+    await fs.mkdir(emailsDir, { recursive: true });
 
     for (const message of messages) {
       if (message.id === null || message.id === undefined) continue;
@@ -555,7 +575,7 @@ export async function downloadGmailEmails(
 
         // Write to file
         const fileName = `email-${message.id}.txt`;
-        const filePath = path.join(EMAILS_DIR, fileName);
+        const filePath = path.join(emailsDir, fileName);
         const content = `From: ${from}\nSubject: ${subject}\nDate: ${date}\n\n${body}`;
 
         await fs.writeFile(filePath, content, 'utf-8');
@@ -586,7 +606,7 @@ export async function downloadGmailEmails(
 
     // Write index
     await fs.writeFile(
-      path.join(EMAILS_DIR, 'index.json'),
+      path.join(emailsDir, 'index.json'),
       JSON.stringify(entries, null, 2),
       'utf-8'
     );
@@ -670,6 +690,8 @@ export function deduplicateByUrl(jobs: DiscoveredJob[]): DiscoveredJob[] {
  */
 export async function main(): Promise<void> {
   await loadEnvFileIfProvided(process.argv.slice(2));
+  const dataDir = getDataDir();
+  const discoveredJobsFile = getDiscoveredJobsFile();
 
   logger.info('Starting discovery...');
 
@@ -723,17 +745,17 @@ export async function main(): Promise<void> {
       },
     };
 
-    await fs.mkdir(DATA_DIR, { recursive: true });
+    await fs.mkdir(dataDir, { recursive: true });
     await fs.writeFile(
-      DISCOVERED_JOBS_FILE,
+      discoveredJobsFile,
       JSON.stringify(output, null, 2),
       'utf-8'
     );
-    logger.info(`Wrote discovered jobs to ${DISCOVERED_JOBS_FILE}`);
+    logger.info(`Wrote discovered jobs to ${discoveredJobsFile}`);
 
     // Write discovery log
     await fs.writeFile(
-      path.join(DATA_DIR, 'discovery-log.json'),
+      path.join(dataDir, 'discovery-log.json'),
       JSON.stringify(log, null, 2),
       'utf-8'
     );

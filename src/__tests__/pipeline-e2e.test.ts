@@ -13,7 +13,7 @@ describe('pipeline stage handoff e2e', () => {
 
   it('runs 03-prefilter main against 02-fetch-specs output shape', async () => {
     const runDir = await createTempRunDir();
-    process.env.JOB_HARVESTER_DATA_DIR = runDir;
+    process.env.JOB_HARVESTER_WORK_DIR = runDir;
 
     const fetchedSpecs = {
       specs: [
@@ -48,7 +48,7 @@ describe('pipeline stage handoff e2e', () => {
 
   it('preserves spec text through compile and writes upload results at run root', async () => {
     const runDir = await createTempRunDir();
-    process.env.JOB_HARVESTER_DATA_DIR = runDir;
+    process.env.JOB_HARVESTER_WORK_DIR = runDir;
 
     await fs.mkdir(path.join(runDir, 'job-scores'), { recursive: true });
     await fs.mkdir(path.join(runDir, 'pdfs'), { recursive: true });

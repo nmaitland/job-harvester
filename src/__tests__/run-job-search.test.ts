@@ -91,6 +91,11 @@ describe('parseArgs', () => {
 describe('createRunDir', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env.JOB_HARVESTER_WORK_DIR = 'C:\\data';
+  });
+
+  afterEach(() => {
+    delete process.env.JOB_HARVESTER_WORK_DIR;
   });
 
   it('should create directory with timestamp format', async () => {
@@ -105,7 +110,7 @@ describe('createRunDir', () => {
     );
   });
 
-  it('should create directory in DATA_DIR', async () => {
+  it('should create directory in WORK_DIR', async () => {
     mockedFs.mkdir.mockResolvedValue(undefined);
 
     await createRunDir();

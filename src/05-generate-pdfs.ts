@@ -8,13 +8,51 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { chromium, type Page } from 'playwright';
 import type { CompiledJob, PDFResult, PDFOutput } from './types';
-import { COMPILED_RESULTS_FILE, PDFS_DIR, PDF_CONFIG } from './config';
+import { PDF_CONFIG } from './config';
 import { slugify } from './utils/slugify';
 import * as logger from './utils/logger';
-import { loadEnvFileIfProvided } from './utils/env-loader';
+import { loadEnvFileIfProvided, parseEnvFileArg } from './utils/env-loader';
 
 interface JobWithTier extends CompiledJob {
   tier: 'passed' | 'review';
+}
+
+function resolveDataDir(): string {
+  const envDir = process.env.JOB_HARVESTER_WORK_DIR;
+  if (envDir === undefined || envDir === '') {
+    throw new Error('JOB_HARVESTER_WORK_DIR is required. Set it in environment or via --env-file.');
+  }
+  return envDir;
+}
+
+function getCompiledResultsFile(): string {
+  return path.join(resolveDataDir(), 'compile-results.json');
+}
+
+function getPdfsDir(): string {
+  return path.join(resolveDataDir(), 'pdfs');
+}
+
+async function loadDefaultEnvIfNeeded(args: string[]): Promise<void> {
+  const { envFile } = parseEnvFileArg(args);
+  if (envFile !== undefined && envFile !== '') {
+    return;
+  }
+
+  const workDir = process.env.JOB_HARVESTER_WORK_DIR;
+  if (workDir !== undefined && workDir !== '') {
+    return;
+  }
+
+  for (const candidate of ['.env', '.env.dev']) {
+    try {
+      await fs.access(candidate);
+      await loadEnvFileIfProvided(['--env-file', candidate]);
+      return;
+    } catch {
+      // Try next candidate.
+    }
+  }
 }
 
 /**
@@ -158,12 +196,16 @@ export async function generateJobPdf(
  * Main entry point
  */
 export async function main(): Promise<void> {
-  await loadEnvFileIfProvided(process.argv.slice(2));
+  const args = process.argv.slice(2);
+  await loadEnvFileIfProvided(args);
+  await loadDefaultEnvIfNeeded(args);
   logger.info('Starting PDF generation...');
+  const compiledResultsFile = getCompiledResultsFile();
+  const pdfsDir = getPdfsDir();
 
   try {
     // Read compiled results
-    const compiledContent = await fs.readFile(COMPILED_RESULTS_FILE, 'utf-8');
+    const compiledContent = await fs.readFile(compiledResultsFile, 'utf-8');
     const compiled = JSON.parse(compiledContent) as { jobs?: CompiledJob[] };
     if (!Array.isArray(compiled.jobs)) {
       throw new Error('Invalid compile results input: expected { jobs: CompiledJob[] }');
@@ -172,7 +214,7 @@ export async function main(): Promise<void> {
     logger.info(`Loaded ${compiled.jobs.length} compiled jobs`);
 
     // Ensure PDFs directory exists
-    await fs.mkdir(PDFS_DIR, { recursive: true });
+    await fs.mkdir(pdfsDir, { recursive: true });
 
     // Separate passed and review jobs
     const passedJobs: JobWithTier[] = compiled.jobs
@@ -197,7 +239,7 @@ export async function main(): Promise<void> {
       // Process passed jobs
       for (const job of passedJobs) {
         try {
-          const result = await generateJobPdf(job, PDFS_DIR, page);
+          const result = await generateJobPdf(job, pdfsDir, page);
           pdfs.push(result);
           successCount++;
         } catch (error) {
@@ -209,7 +251,7 @@ export async function main(): Promise<void> {
       // Process review jobs
       for (const job of reviewJobs) {
         try {
-          const result = await generateJobPdf(job, PDFS_DIR, page);
+          const result = await generateJobPdf(job, pdfsDir, page);
           pdfs.push(result);
           successCount++;
         } catch (error) {
@@ -233,7 +275,7 @@ export async function main(): Promise<void> {
     };
 
     await fs.writeFile(
-      path.join(PDFS_DIR, 'pdf-results.json'),
+      path.join(pdfsDir, 'pdf-results.json'),
       JSON.stringify(output, null, 2),
       'utf-8'
     );

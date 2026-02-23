@@ -9,7 +9,6 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as glob from 'glob';
 import type { FilterVerdict, JobScore, CompiledJob, CompileOutput, RejectionReason, JobSpec } from './types';
-import { PRE_FILTER_SURVIVORS_FILE, PRE_FILTER_REJECTIONS_FILE, SCORES_DIR, COMPILED_RESULTS_FILE, ALL_REJECTIONS_FILE } from './config';
 import { slugify } from './utils/slugify';
 import * as logger from './utils/logger';
 import { loadEnvFileIfProvided } from './utils/env-loader';
@@ -27,6 +26,34 @@ interface RejectionEntry {
   url: string;
   reason: RejectionReason | 'ai_reject';
   rejectedAt: string;
+}
+
+function resolveDataDir(): string {
+  const envDir = process.env.JOB_HARVESTER_WORK_DIR;
+  if (envDir === undefined || envDir === '') {
+    throw new Error('JOB_HARVESTER_WORK_DIR is required. Set it in environment or via --env-file.');
+  }
+  return envDir;
+}
+
+function getPreFilterSurvivorsFile(): string {
+  return path.join(resolveDataDir(), 'pre-filter-survivors.json');
+}
+
+function getPreFilterRejectionsFile(): string {
+  return path.join(resolveDataDir(), 'pre-filter-rejections.json');
+}
+
+function getScoresDir(): string {
+  return path.join(resolveDataDir(), 'job-scores');
+}
+
+function getCompiledResultsFile(): string {
+  return path.join(resolveDataDir(), 'compile-results.json');
+}
+
+function getAllRejectionsFile(): string {
+  return path.join(resolveDataDir(), 'all-rejections.json');
 }
 
 /**
@@ -93,16 +120,20 @@ export async function readJobScore(filePath: string): Promise<JobScore | null> {
  */
 export async function compileResults(): Promise<CompileOutput> {
   const timestamp = new Date().toISOString();
+  const preFilterSurvivorsFile = getPreFilterSurvivorsFile();
+  const preFilterRejectionsFile = getPreFilterRejectionsFile();
+  const scoresDir = getScoresDir();
+  const allRejectionsFile = getAllRejectionsFile();
   
   // Read pre-filter survivors
-  const survivorsContent = await fs.readFile(PRE_FILTER_SURVIVORS_FILE, 'utf-8');
+  const survivorsContent = await fs.readFile(preFilterSurvivorsFile, 'utf-8');
   const survivors = JSON.parse(survivorsContent) as JobSpec[];
   if (!Array.isArray(survivors)) {
     throw new Error('Invalid pre-filter survivors input: expected JobSpec[]');
   }
   
   // Read pre-filter rejections
-  const preFilterRejectionsContent = await fs.readFile(PRE_FILTER_REJECTIONS_FILE, 'utf-8');
+  const preFilterRejectionsContent = await fs.readFile(preFilterRejectionsFile, 'utf-8');
   const preFilterRejections = JSON.parse(preFilterRejectionsContent) as FilterVerdict[];
   if (!Array.isArray(preFilterRejections)) {
     throw new Error('Invalid pre-filter rejections input: expected FilterVerdict[]');
@@ -114,7 +145,7 @@ export async function compileResults(): Promise<CompileOutput> {
   
   // Process each survivor
   for (const survivor of survivors) {
-    const verdictFile = await findVerdictFile(survivor.id, survivor.company, SCORES_DIR);
+    const verdictFile = await findVerdictFile(survivor.id, survivor.company, scoresDir);
     
     if (verdictFile === null) {
       // Missing verdict → REVIEW (conservative)
@@ -204,7 +235,7 @@ export async function compileResults(): Promise<CompileOutput> {
   
   // Write all-rejections.json
   await fs.writeFile(
-    ALL_REJECTIONS_FILE,
+    allRejectionsFile,
     JSON.stringify(allRejections, null, 2),
     'utf-8'
   );
@@ -228,13 +259,14 @@ export async function compileResults(): Promise<CompileOutput> {
 export async function main(): Promise<void> {
   await loadEnvFileIfProvided(process.argv.slice(2));
   logger.info('Starting compile results...');
+  const compiledResultsFile = getCompiledResultsFile();
   
   try {
     const result = await compileResults();
     
     // Write compile-results.json
     await fs.writeFile(
-      COMPILED_RESULTS_FILE,
+      compiledResultsFile,
       JSON.stringify(result, null, 2),
       'utf-8'
     );

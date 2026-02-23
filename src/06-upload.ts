@@ -9,13 +9,6 @@ import * as path from 'path';
 import { google } from 'googleapis';
 import { Client } from '@microsoft/microsoft-graph-client';
 import type { PDFResult, UploadResult, UploadOutput } from './types';
-import {
-  PDFS_DIR,
-  SPECS_DIR,
-  COMPILED_RESULTS_FILE,
-  ALL_REJECTIONS_FILE,
-  UPLOAD_RESULTS_FILE,
-} from './config';
 import * as logger from './utils/logger';
 import { getSecrets } from './utils/secrets';
 import { retry, withTimeout } from './utils/http';
@@ -47,13 +40,43 @@ async function loadCredentials(): Promise<{
   });
 }
 
+function resolveDataDir(): string {
+  const envDir = process.env.JOB_HARVESTER_WORK_DIR;
+  if (envDir === undefined || envDir === '') {
+    throw new Error('JOB_HARVESTER_WORK_DIR is required. Set it in environment or via --env-file.');
+  }
+  return envDir;
+}
+
+function getSpecsDir(): string {
+  return path.join(resolveDataDir(), 'specs');
+}
+
+function getPdfsDir(): string {
+  return path.join(resolveDataDir(), 'pdfs');
+}
+
+function getCompiledResultsFile(): string {
+  return path.join(resolveDataDir(), 'compile-results.json');
+}
+
+function getAllRejectionsFile(): string {
+  return path.join(resolveDataDir(), 'all-rejections.json');
+}
+
+function getUploadResultsFile(): string {
+  return path.join(resolveDataDir(), 'upload-results.json');
+}
+
 /**
  * Upload specs to OneDrive
  */
 export async function uploadSpecsToOneDrive(
   accessToken: string,
   specsDir: string,
-  folderName: string
+  folderName: string,
+  compileResultsFile: string,
+  allRejectionsFile: string
 ): Promise<{ count: number; errors: string[] }> {
   const result = { count: 0, errors: [] as string[] };
 
@@ -78,8 +101,8 @@ export async function uploadSpecsToOneDrive(
 
     // Also upload compile-results.json and all-rejections.json
     const extraFiles = [
-      { name: 'compile-results.json', path: COMPILED_RESULTS_FILE },
-      { name: 'all-rejections.json', path: ALL_REJECTIONS_FILE },
+      { name: 'compile-results.json', path: compileResultsFile },
+      { name: 'all-rejections.json', path: allRejectionsFile },
     ];
 
     // Upload spec files
@@ -239,6 +262,11 @@ export async function uploadPdfsToGoogleDrive(
 export async function main(): Promise<void> {
   await loadEnvFileIfProvided(process.argv.slice(2));
   logger.info('Starting upload...');
+  const specsDir = getSpecsDir();
+  const pdfsDir = getPdfsDir();
+  const compileResultsFile = getCompiledResultsFile();
+  const allRejectionsFile = getAllRejectionsFile();
+  const uploadResultsFile = getUploadResultsFile();
 
   const credentials = await loadCredentials();
   const timestamp = new Date().toISOString();
@@ -257,14 +285,16 @@ export async function main(): Promise<void> {
     // Upload specs to OneDrive
     const oneDriveResult = await uploadSpecsToOneDrive(
       credentials.oneDriveToken,
-      SPECS_DIR,
-      folderName
+      specsDir,
+      folderName,
+      compileResultsFile,
+      allRejectionsFile
     );
     log.onedrive = oneDriveResult;
     logger.info(`OneDrive upload: ${oneDriveResult.count} files`);
 
     // Read PDF results
-    const pdfResultsPath = path.join(PDFS_DIR, 'pdf-results.json');
+    const pdfResultsPath = path.join(pdfsDir, 'pdf-results.json');
     let pdfs: PDFResult[] = [];
     try {
       const pdfContent = await fs.readFile(pdfResultsPath, 'utf-8');
@@ -301,7 +331,7 @@ export async function main(): Promise<void> {
     };
 
     await fs.writeFile(
-      UPLOAD_RESULTS_FILE,
+      uploadResultsFile,
       JSON.stringify(output, null, 2),
       'utf-8'
     );
