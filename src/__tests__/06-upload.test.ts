@@ -52,7 +52,7 @@ describe('uploadSpecsToOneDrive', () => {
   });
 
   it('should return empty result when no access token', async () => {
-    const result = await uploadSpecsToOneDrive('', '/specs', '2024-01-15');
+    const result = await uploadSpecsToOneDrive('', '/specs', '2024-01-15', '/run/compile-results.json', '/run/all-rejections.json');
     expect(result.count).toBe(0);
     expect(result.errors).toEqual([]);
   });
@@ -60,7 +60,7 @@ describe('uploadSpecsToOneDrive', () => {
   it('should handle readdir errors', async () => {
     mockedFs.readdir.mockRejectedValueOnce(new Error('Permission denied'));
 
-    const result = await uploadSpecsToOneDrive('token', '/specs', '2024-01-15');
+    const result = await uploadSpecsToOneDrive('token', '/specs', '2024-01-15', '/run/compile-results.json', '/run/all-rejections.json');
 
     expect(result.count).toBe(0);
     expect(result.errors).toHaveLength(1);

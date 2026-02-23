@@ -50,6 +50,11 @@ ONEDRIVE_ACCESS_TOKEN=your_access_token
 
 # Google Drive target
 GOOGLE_DRIVE_FOLDER_ID=your_folder_id
+
+# Optional output directories
+# Required output directory
+JOB_HARVESTER_WORK_DIR=./data
+JOB_HARVESTER_MANAGEMENT_DATA_DIR=.
 ```
 
 Notes:
@@ -58,6 +63,8 @@ Notes:
 - OneDrive upload in [`main()`](src/06-upload.ts:236) is skipped when [`ONEDRIVE_ACCESS_TOKEN`](README.md) is unset/empty.
 - Google Drive upload in [`uploadPdfsToGoogleDrive()`](src/06-upload.ts:143) is skipped when [`GOOGLE_SERVICE_ACCOUNT_KEY`](README.md), [`GOOGLE_DRIVE_IMPERSONATED_USER`](README.md), or [`GOOGLE_DRIVE_FOLDER_ID`](README.md) is unset/empty.
 - Gmail read-state behavior is controlled by [`GMAIL_MARK_AS_READ`](README.md) (`true` by default).
+- [`JOB_HARVESTER_WORK_DIR`](README.md) is required and controls pipeline outputs (`discovered-jobs.json`, `fetched-specs.json`, `specs/`, `pdfs/`, etc.).
+- [`JOB_HARVESTER_MANAGEMENT_DATA_DIR`](README.md) controls operator-managed files (`applied-companies.txt`, `cv-keywords.md`, `job-search-processed.json`).
 
 ## Usage
 

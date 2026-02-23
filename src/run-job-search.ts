@@ -8,7 +8,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as logger from './utils/logger';
-import { DATA_DIR } from './config';
 import { loadEnvFileIfProvided } from './utils/env-loader';
 
 // Import all script main functions
@@ -39,6 +38,14 @@ interface CliArgs {
   runDir: string | undefined;
   dryRun: boolean;
   envFile: string | undefined;
+}
+
+function resolveDataDir(): string {
+  const envDir = process.env.JOB_HARVESTER_WORK_DIR;
+  if (envDir === undefined || envDir === '') {
+    throw new Error('JOB_HARVESTER_WORK_DIR is required. Set it in environment or via --env-file.');
+  }
+  return envDir;
 }
 
 /**
@@ -87,7 +94,7 @@ export function parseArgs(args: string[]): CliArgs {
 export async function createRunDir(): Promise<string> {
   const now = new Date();
   const timestamp = now.toISOString().replace(/[:T]/g, '-').split('.')[0];
-  const runDir = path.join(DATA_DIR, `run-${timestamp}`);
+  const runDir = path.join(resolveDataDir(), `run-${timestamp}`);
 
   await fs.mkdir(runDir, { recursive: true });
   logger.info(`Created run directory: ${runDir}`);
@@ -203,7 +210,7 @@ export async function writeRunManifest(runDir: string, phase: Phase): Promise<vo
  * Run a script
  */
 export async function runScript(scriptName: string, _runDir: string, dryRun: boolean): Promise<void> {
-  process.env.JOB_HARVESTER_DATA_DIR = _runDir;
+  process.env.JOB_HARVESTER_WORK_DIR = _runDir;
 
   if (dryRun) {
     logger.info(`[DRY RUN] Would run ${scriptName}`);
@@ -248,7 +255,7 @@ export async function runScript(scriptName: string, _runDir: string, dryRun: boo
  */
 export async function runPrePhase(runDir: string, dryRun: boolean): Promise<void> {
   logger.info('=== Pre-AI Pipeline ===');
-  process.env.JOB_HARVESTER_DATA_DIR = runDir;
+  process.env.JOB_HARVESTER_WORK_DIR = runDir;
 
   await writeRunManifest(runDir, 'pre');
   await runScript('01-discover', runDir, dryRun);
@@ -283,7 +290,7 @@ export async function runPrePhase(runDir: string, dryRun: boolean): Promise<void
  */
 export async function runPostPhase(runDir: string, dryRun: boolean): Promise<void> {
   logger.info('=== Post-AI Pipeline ===');
-  process.env.JOB_HARVESTER_DATA_DIR = runDir;
+  process.env.JOB_HARVESTER_WORK_DIR = runDir;
 
   await validatePostPhase(runDir);
   await writeRunManifest(runDir, 'post');

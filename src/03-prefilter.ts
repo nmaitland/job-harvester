@@ -8,12 +8,45 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { JobSpec, FilterVerdict, PreFilterOutput, RejectionReason } from './types';
-import { FETCHED_SPECS_FILE, PRE_FILTER_SURVIVORS_FILE, PRE_FILTER_REJECTIONS_FILE, APPLIED_COMPANIES_FILE, JUNIOR_KEYWORDS } from './config';
+import { JUNIOR_KEYWORDS, MANAGEMENT_DATA_DIR } from './config';
 import * as logger from './utils/logger';
 import { loadEnvFileIfProvided } from './utils/env-loader';
 
-// Path to processed jobs tracking file
-const PROCESSED_JOBS_FILE = path.join(__dirname, '..', '..', '..', 'memory', 'job-search-processed.json');
+function getManagementDataDir(): string {
+  const envDir = process.env.JOB_HARVESTER_MANAGEMENT_DATA_DIR;
+  if (envDir !== undefined && envDir !== '') {
+    return envDir;
+  }
+  return MANAGEMENT_DATA_DIR;
+}
+
+function getAppliedCompaniesFile(): string {
+  return path.join(getManagementDataDir(), 'applied-companies.txt');
+}
+
+function getProcessedJobsFile(): string {
+  return path.join(getManagementDataDir(), 'job-search-processed.json');
+}
+
+function resolveDataDir(): string {
+  const envDir = process.env.JOB_HARVESTER_WORK_DIR;
+  if (envDir === undefined || envDir === '') {
+    throw new Error('JOB_HARVESTER_WORK_DIR is required. Set it in environment or via --env-file.');
+  }
+  return envDir;
+}
+
+function getFetchedSpecsFile(): string {
+  return path.join(resolveDataDir(), 'fetched-specs.json');
+}
+
+function getPreFilterSurvivorsFile(): string {
+  return path.join(resolveDataDir(), 'pre-filter-survivors.json');
+}
+
+function getPreFilterRejectionsFile(): string {
+  return path.join(resolveDataDir(), 'pre-filter-rejections.json');
+}
 
 /**
  * Normalize company name for comparison
@@ -163,11 +196,13 @@ export function applyFilters(
  */
 export async function runPreFilter(specs: JobSpec[]): Promise<PreFilterOutput> {
   const timestamp = new Date().toISOString();
+  const appliedCompaniesFile = getAppliedCompaniesFile();
+  const processedJobsFile = getProcessedJobsFile();
   
   // Load reference data
   const [appliedCompanies, processedUrls] = await Promise.all([
-    loadAppliedCompanies(APPLIED_COMPANIES_FILE),
-    loadProcessedUrls(PROCESSED_JOBS_FILE),
+    loadAppliedCompanies(appliedCompaniesFile),
+    loadProcessedUrls(processedJobsFile),
   ]);
   
   const survivors: JobSpec[] = [];
@@ -221,33 +256,36 @@ export async function runPreFilter(specs: JobSpec[]): Promise<PreFilterOutput> {
 export async function main(): Promise<void> {
   await loadEnvFileIfProvided(process.argv.slice(2));
   logger.info('Starting pre-filter...');
+  const fetchedSpecsFile = getFetchedSpecsFile();
+  const preFilterSurvivorsFile = getPreFilterSurvivorsFile();
+  const preFilterRejectionsFile = getPreFilterRejectionsFile();
   
   try {
     // Read fetched specs
-    const specsContent = await fs.readFile(FETCHED_SPECS_FILE, 'utf-8');
+    const specsContent = await fs.readFile(fetchedSpecsFile, 'utf-8');
     const parsed = JSON.parse(specsContent) as JobSpec[] | { specs?: JobSpec[] };
     const specs = Array.isArray(parsed) ? parsed : (parsed.specs ?? []);
     
-    logger.info(`Loaded ${specs.length} job specs from ${FETCHED_SPECS_FILE}`);
+    logger.info(`Loaded ${specs.length} job specs from ${fetchedSpecsFile}`);
     
     // Run filters
     const result = await runPreFilter(specs);
     
     // Write survivors
     await fs.writeFile(
-      PRE_FILTER_SURVIVORS_FILE,
+      preFilterSurvivorsFile,
       JSON.stringify(result.survivors, null, 2),
       'utf-8'
     );
-    logger.info(`Wrote ${result.survivors.length} survivors to ${PRE_FILTER_SURVIVORS_FILE}`);
+    logger.info(`Wrote ${result.survivors.length} survivors to ${preFilterSurvivorsFile}`);
     
     // Write rejections
     await fs.writeFile(
-      PRE_FILTER_REJECTIONS_FILE,
+      preFilterRejectionsFile,
       JSON.stringify(result.rejections, null, 2),
       'utf-8'
     );
-    logger.info(`Wrote ${result.rejections.length} rejections to ${PRE_FILTER_REJECTIONS_FILE}`);
+    logger.info(`Wrote ${result.rejections.length} rejections to ${preFilterRejectionsFile}`);
     
     // Print summary
     logger.success('Pre-filter complete:');
