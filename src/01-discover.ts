@@ -13,17 +13,112 @@ import { DISCOVERED_JOBS_FILE, EMAILS_DIR, DATA_DIR } from './config';
 import * as logger from './utils/logger';
 import { getSecrets } from './utils/secrets';
 import { loadEnvFileIfProvided } from './utils/env-loader';
+import { sleep } from './utils/http';
 
 // Brave Search API configuration
-const BRAVE_API_BASE = 'https://api.search.brave.com/res/v1/web/search';
+function getBraveApiBase(): string {
+  return process.env.BRAVE_API_BASE ?? 'https://api.search.brave.com/res/v1/web/search';
+}
+
+function getBraveRateLimitMaxRetries(): number {
+  const raw = process.env.BRAVE_RATE_LIMIT_MAX_RETRIES;
+  if (raw === undefined) {
+    return 3;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return 3;
+  }
+
+  return parsed;
+}
+
+function getBraveRateLimitBaseDelayMs(): number {
+  const raw = process.env.BRAVE_RATE_LIMIT_BASE_DELAY_MS;
+  if (raw === undefined) {
+    return 2000;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return 2000;
+  }
+
+  return parsed;
+}
 
 // LinkedIn configuration
-const LINKEDIN_BROWSER_PROFILE_DIR = process.env.LINKEDIN_PROFILE_DIR ?? './linkedin-profile';
-const LINKEDIN_SEARCH_TERMS = ['CTO', 'Solution Architect', 'Software Engineering Manager'];
+function getLinkedInSearchTerms(): string[] {
+  const raw = process.env.LINKEDIN_SEARCH_TERMS;
+  if (raw === undefined || raw.trim() === '') {
+    return ['CTO', 'Solution Architect', 'Software Engineering Manager'];
+  }
+
+  return raw
+    .split(',')
+    .map(term => term.trim())
+    .filter(term => term !== '');
+}
+
+function getLinkedInLocations(): string[] {
+  const raw = process.env.LINKEDIN_LOCATIONS;
+  if (raw === undefined || raw.trim() === '') {
+    return ['Zurich'];
+  }
+
+  return raw
+    .split(',')
+    .map(location => location.trim())
+    .filter(location => location !== '');
+}
+
+function getLinkedInProfileDir(): string {
+  return process.env.LINKEDIN_PROFILE_DIR ?? './linkedin-profile';
+}
 
 // Gmail configuration
-const GMAIL_MAX_RESULTS = 40;
-const GMAIL_LABEL = 'Jobs-2025-Adverts';
+function getGmailMaxResults(): number {
+  const raw = process.env.GMAIL_MAX_RESULTS;
+  if (raw === undefined) {
+    return 40;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 40;
+  }
+
+  return parsed;
+}
+
+function getBraveQueries(): string[] {
+  const raw = process.env.BRAVE_QUERIES;
+  if (raw === undefined || raw.trim() === '') {
+    return [
+      'software engineer jobs Switzerland',
+      'backend developer remote',
+      'software engineer remote',
+    ];
+  }
+
+  return raw
+    .split(',')
+    .map(query => query.trim())
+    .filter(query => query !== '');
+}
+
+function getGmailLabel(): string {
+  return process.env.GMAIL_LABEL ?? '';
+}
+
+function toGmailLabelQuery(label: string): string {
+  const trimmed = label.trim();
+  if (trimmed.toLowerCase().startsWith('label:')) {
+    return trimmed;
+  }
+  return `label:${trimmed}`;
+}
 
 function getGmailUserId(): string {
   return process.env.GOOGLE_GMAIL_IMPERSONATED_USER ?? 'user@example.com';
@@ -101,6 +196,9 @@ export async function discoverViaBrave(
 ): Promise<DiscoveredJob[]> {
   const jobs: DiscoveredJob[] = [];
   const errors: string[] = [];
+  const braveApiBase = getBraveApiBase();
+  const braveRateLimitMaxRetries = getBraveRateLimitMaxRetries();
+  const braveRateLimitBaseDelayMs = getBraveRateLimitBaseDelayMs();
 
   if (apiKey === '') {
     logger.warn('Skipping Brave search - no API key');
@@ -108,40 +206,63 @@ export async function discoverViaBrave(
   }
 
   for (const query of queries) {
+    let rateLimitRetries = 0;
+    let shouldContinueQuery = true;
+
     try {
-      const response = await fetch(
-        `${BRAVE_API_BASE}?q=${encodeURIComponent(query)}&freshness=pw&count=20`,
-        {
-          headers: {
-            'X-Subscription-Token': apiKey,
-            'Accept': 'application/json',
-          },
+      while (shouldContinueQuery) {
+        const response = await fetch(
+          `${braveApiBase}?q=${encodeURIComponent(query)}&freshness=pw&count=20`,
+          {
+            headers: {
+              'X-Subscription-Token': apiKey,
+              'Accept': 'application/json',
+            },
+          }
+        );
+
+        if (response.status === 429) {
+          rateLimitRetries++;
+          if (rateLimitRetries > braveRateLimitMaxRetries) {
+            logger.warn(`Brave API rate limit exhausted for query: ${query}`);
+            errors.push(`Rate limit exhausted: ${query}`);
+            shouldContinueQuery = false;
+            continue;
+          }
+
+          const retryAfterHeader = response.headers.get('retry-after');
+          const retryAfterSeconds = retryAfterHeader !== null ? Number.parseInt(retryAfterHeader, 10) : Number.NaN;
+          const delayMs = Number.isFinite(retryAfterSeconds)
+            ? retryAfterSeconds * 1000
+            : braveRateLimitBaseDelayMs * rateLimitRetries;
+
+          logger.warn(
+            `Brave API rate limit hit for query: ${query}. Retrying in ${delayMs}ms (attempt ${rateLimitRetries}/${braveRateLimitMaxRetries})`
+          );
+          await sleep(delayMs);
+          continue;
         }
-      );
 
-      if (response.status === 429) {
-        logger.warn(`Brave API rate limit hit for query: ${query}`);
-        errors.push(`Rate limit: ${query}`);
-        continue;
-      }
-
-      if (!response.ok) {
-        logger.error(`Brave API error: ${response.status} ${response.statusText}`);
-        errors.push(`HTTP ${response.status}: ${query}`);
-        continue;
-      }
-
-      const data = await response.json() as BraveSearchResponse;
-      const results = data.web?.results ?? [];
-
-      for (const result of results) {
-        const job = extractJobFromBraveResult(result);
-        if (job !== null) {
-          jobs.push(job);
+        if (!response.ok) {
+          logger.error(`Brave API error: ${response.status} ${response.statusText}`);
+          errors.push(`HTTP ${response.status}: ${query}`);
+          shouldContinueQuery = false;
+          continue;
         }
-      }
 
-      logger.info(`Brave search for "${query}": ${results.length} results`);
+        const data = await response.json() as BraveSearchResponse;
+        const results = data.web?.results ?? [];
+
+        for (const result of results) {
+          const job = extractJobFromBraveResult(result);
+          if (job !== null) {
+            jobs.push(job);
+          }
+        }
+
+        logger.info(`Brave search for "${query}": ${results.length} results`);
+        shouldContinueQuery = false;
+      }
     } catch (error) {
       logger.error(`Brave search failed for "${query}": ${error instanceof Error ? error.message : String(error)}`);
       errors.push(`Error: ${query}`);
@@ -221,6 +342,7 @@ export async function discoverViaLinkedIn(
   password: string
 ): Promise<DiscoveredJob[]> {
   const jobs: DiscoveredJob[] = [];
+  const linkedInProfileDir = getLinkedInProfileDir();
 
   if (username === '' || password === '') {
     logger.warn('Skipping LinkedIn search - no credentials');
@@ -229,13 +351,13 @@ export async function discoverViaLinkedIn(
 
   // Check if profile directory exists
   try {
-    await fs.access(LINKEDIN_BROWSER_PROFILE_DIR);
+    await fs.access(linkedInProfileDir);
   } catch {
-    logger.error(`LinkedIn profile directory not found: ${LINKEDIN_BROWSER_PROFILE_DIR}`);
-    return jobs;
+    await fs.mkdir(linkedInProfileDir, { recursive: true });
+    logger.info(`Created LinkedIn profile directory: ${linkedInProfileDir}`);
   }
 
-  const browser = await chromium.launchPersistentContext(LINKEDIN_BROWSER_PROFILE_DIR, {
+  const browser = await chromium.launchPersistentContext(linkedInProfileDir, {
     headless: true,
   });
 
@@ -253,7 +375,13 @@ export async function discoverViaLinkedIn(
       await page.fill('#username', username);
       await page.fill('#password', password);
       await page.click('button[type="submit"]');
-      await page.waitForLoadState('networkidle');
+
+      // LinkedIn can keep long-lived background requests open, so networkidle can timeout.
+      await page.waitForURL((url: URL) => !url.pathname.includes('/login'), { timeout: 45000 }).catch(() => undefined);
+      await page.waitForLoadState('domcontentloaded', { timeout: 45000 }).catch(() => undefined);
+
+      // Give the app a moment to settle after redirects/challenges.
+      await sleep(2000);
 
       // Verify login succeeded
       const loginSuccess = await checkLinkedInLoginState(page);
@@ -266,41 +394,84 @@ export async function discoverViaLinkedIn(
     logger.info('LinkedIn login successful');
 
     // Search for jobs
-    for (const term of LINKEDIN_SEARCH_TERMS) {
-      try {
-        const searchUrl = `https://www.linkedin.com/jobs/search?keywords=${encodeURIComponent(term)}&location=Zurich`;
-        await page.goto(searchUrl);
-        await page.waitForLoadState('networkidle');
+    const linkedInSearchTerms = getLinkedInSearchTerms();
+    const linkedInLocations = getLinkedInLocations();
+    for (const term of linkedInSearchTerms) {
+      for (const location of linkedInLocations) {
+        try {
+          const searchUrl = `https://www.linkedin.com/jobs/search?keywords=${encodeURIComponent(term)}&location=${encodeURIComponent(location)}`;
+          await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+          await sleep(1500);
 
-        // Extract job cards
-        const jobCards = await page.$$('[data-job-id]');
-        logger.info(`LinkedIn search for "${term}": ${jobCards.length} job cards found`);
+          // Extract job cards
+          const jobCards = await page.$$('[data-job-id]');
+          logger.info(`LinkedIn search for "${term}" in "${location}": ${jobCards.length} job cards found`);
 
-        for (const card of jobCards) {
-          try {
-            const title = await card.$eval('.job-card-list__title', (el: Element) => (el.textContent ?? '').trim());
-            const company = await card.$eval('.job-card-container__company-name', (el: Element) => (el.textContent ?? '').trim());
-            const href = await card.$eval('a', (el: Element) => el.getAttribute('href') ?? '');
+          for (const card of jobCards) {
+            try {
+              const extracted = await card.evaluate((el: Element) => {
+                const pickText = (selectors: string[]): string => {
+                  for (const selector of selectors) {
+                    const node = el.querySelector(selector);
+                    const text = (node?.textContent ?? '').trim();
+                    if (text !== '') {
+                      return text;
+                    }
+                  }
+                  return '';
+                };
 
-            if (title !== '' && company !== '' && href !== '') {
-              // Strip query params from URL
-              const url = `https://www.linkedin.com${href.split('?')[0]}`;
+                const title = pickText([
+                  '.job-card-list__title',
+                  '.job-card-container__link',
+                  '.artdeco-entity-lockup__title',
+                  'a.job-card-list__title',
+                  'a[href*="/jobs/view/"]',
+                ]);
 
-              jobs.push({
-                id: `linkedin-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                company,
-                title,
-                url,
-                source: 'linkedin',
-                discoveredAt: new Date().toISOString(),
+                const company = pickText([
+                  '.job-card-container__company-name',
+                  '.artdeco-entity-lockup__subtitle',
+                  '.job-card-container__primary-description',
+                ]);
+
+                const anchors = Array.from(el.querySelectorAll('a'));
+                const href = anchors
+                  .map(a => a.getAttribute('href') ?? '')
+                  .find(h => h.includes('/jobs/view/')) ?? '';
+
+                return { title, company, href };
               });
+
+              const title = extracted.title;
+              const company = extracted.company;
+              const href = extracted.href;
+
+              if (title !== '' && company !== '' && href !== '') {
+                // Strip query params from URL
+                const normalizedHref = href.startsWith('http') ? href : `https://www.linkedin.com${href}`;
+                const url = normalizedHref.split('?')[0] ?? normalizedHref;
+
+                jobs.push({
+                  id: `linkedin-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                  company,
+                  title,
+                  url,
+                  source: 'linkedin',
+                  discoveredAt: new Date().toISOString(),
+                });
+              }
+            } catch (error) {
+              logger.warn(
+                `LinkedIn card parse skipped for "${term}" in "${location}": ${error instanceof Error ? error.message : String(error)}`
+              );
             }
-          } catch {
-            // Skip cards that can't be parsed
           }
+        } catch (error) {
+          logger.error(
+            `LinkedIn search failed for "${term}" in "${location}": ${error instanceof Error ? error.message : String(error)}`
+          );
         }
-      } catch (error) {
-        logger.error(`LinkedIn search failed for "${term}": ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   } finally {
@@ -319,6 +490,9 @@ export async function downloadGmailEmails(
 ): Promise<GmailEmailEntry[]> {
   const entries: GmailEmailEntry[] = [];
   const gmailUserId = getGmailUserId();
+  const gmailLabel = getGmailLabel();
+  const gmailLabelQuery = toGmailLabelQuery(gmailLabel);
+  const gmailMaxResults = getGmailMaxResults();
   const markAsRead = shouldMarkGmailAsRead();
 
   if (serviceAccountKey === '') {
@@ -334,9 +508,12 @@ export async function downloadGmailEmails(
   try {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const credentials: { client_email: string; private_key: string } = JSON.parse(serviceAccountKey);
+    const normalizedPrivateKey = credentials.private_key.includes('\\n')
+      ? credentials.private_key.replace(/\\n/g, '\n')
+      : credentials.private_key;
     const auth = new google.auth.JWT({
       email: credentials.client_email,
-      key: credentials.private_key,
+      key: normalizedPrivateKey,
       scopes: ['https://www.googleapis.com/auth/gmail.modify'],
       subject: impersonatedUser,
     });
@@ -346,9 +523,8 @@ export async function downloadGmailEmails(
     // List unread messages in Jobs label
     const listResponse = await gmail.users.messages.list({
       userId: gmailUserId,
-      labelIds: [GMAIL_LABEL],
-      q: 'is:unread',
-      maxResults: GMAIL_MAX_RESULTS,
+      q: `${gmailLabelQuery} is:unread`,
+      maxResults: gmailMaxResults,
     });
 
     const messages = listResponse.data.messages ?? [];
@@ -508,11 +684,7 @@ export async function main(): Promise<void> {
 
   try {
     // Discover from Brave
-    const braveQueries = [
-      'software engineer jobs Switzerland',
-      'backend developer remote',
-      'software engineer remote',
-    ];
+    const braveQueries = getBraveQueries();
     const braveJobs = await discoverViaBrave(secrets.braveApiKey, braveQueries);
     log.brave.count = braveJobs.length;
     logger.info(`Brave discovery: ${braveJobs.length} jobs`);
