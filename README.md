@@ -40,23 +40,35 @@ Create a `.env` file with:
 # Brightdata API
 BRIGHTDATA_API_KEY=your_api_key
 
-# Gmail API
-GMAIL_CLIENT_ID=your_client_id
-GMAIL_CLIENT_SECRET=your_client_secret
-GMAIL_REFRESH_TOKEN=your_refresh_token
+# Gmail + Google Drive (service account with domain-wide delegation)
+GOOGLE_SERVICE_ACCOUNT_KEY={"type":"service_account","project_id":"...","private_key_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n","client_email":"...","client_id":"..."}
+GOOGLE_GMAIL_IMPERSONATED_USER=mailbox-user@your-domain.com
+GOOGLE_DRIVE_IMPERSONATED_USER=drive-user@your-domain.com
 
-# OneDrive
-ONEDRIVE_CLIENT_ID=your_client_id
-ONEDRIVE_CLIENT_SECRET=your_client_secret
-ONEDRIVE_REFRESH_TOKEN=your_refresh_token
+# OneDrive (06-upload.ts expects an access token)
+ONEDRIVE_ACCESS_TOKEN=your_access_token
 
-# Google Drive
-GOOGLE_DRIVE_CLIENT_ID=your_client_id
-GOOGLE_DRIVE_CLIENT_SECRET=your_client_secret
-GOOGLE_DRIVE_REFRESH_TOKEN=your_refresh_token
+# Google Drive target
+GOOGLE_DRIVE_FOLDER_ID=your_folder_id
 ```
 
+Notes:
+
+- Gmail discovery in [`main()`](src/01-discover.ts:549) is skipped when [`GOOGLE_SERVICE_ACCOUNT_KEY`](README.md) or [`GOOGLE_GMAIL_IMPERSONATED_USER`](README.md) is unset/empty.
+- OneDrive upload in [`main()`](src/06-upload.ts:236) is skipped when [`ONEDRIVE_ACCESS_TOKEN`](README.md) is unset/empty.
+- Google Drive upload in [`uploadPdfsToGoogleDrive()`](src/06-upload.ts:143) is skipped when [`GOOGLE_SERVICE_ACCOUNT_KEY`](README.md), [`GOOGLE_DRIVE_IMPERSONATED_USER`](README.md), or [`GOOGLE_DRIVE_FOLDER_ID`](README.md) is unset/empty.
+- Gmail read-state behavior is controlled by [`GMAIL_MARK_AS_READ`](README.md) (`true` by default).
+
 ## Usage
+
+### Service-account setup (Google Workspace Admin)
+
+1. Create a Google Cloud service account and enable Gmail API + Drive API.
+2. Enable Domain-Wide Delegation on the service account.
+3. In Google Workspace Admin Console, authorize the service account client ID with these scopes:
+   - `https://www.googleapis.com/auth/gmail.modify`
+   - `https://www.googleapis.com/auth/drive.file`
+4. Set [`GOOGLE_GMAIL_IMPERSONATED_USER`](README.md) and [`GOOGLE_DRIVE_IMPERSONATED_USER`](README.md) to delegated users in your Workspace domain.
 
 ### Run Individual Scripts
 
@@ -69,10 +81,28 @@ npm run generate-pdfs   # Generate PDFs
 npm run upload          # Upload to cloud storage
 ```
 
+Each script supports `--env-file` (file values override existing process env):
+
+```bash
+npm run dev:discover -- --env-file .env.dev
+npm run dev:fetch-specs -- --env-file .env.dev
+npm run dev:prefilter -- --env-file .env.dev
+npm run dev:compile -- --env-file .env.dev
+npm run dev:generate-pdfs -- --env-file .env.dev
+npm run dev:upload -- --env-file .env.dev
+```
+
 ### Run Full Pipeline
 
 ```bash
 npm run run             # Run full pipeline
+```
+
+Orchestrator also supports `--env-file`:
+
+```bash
+npm run dev:run -- --phase pre --env-file .env.dev
+npm run dev:run -- --phase post --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env.dev
 ```
 
 ## Testing

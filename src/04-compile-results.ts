@@ -12,6 +12,7 @@ import type { FilterVerdict, JobScore, CompiledJob, CompileOutput, RejectionReas
 import { PRE_FILTER_SURVIVORS_FILE, PRE_FILTER_REJECTIONS_FILE, SCORES_DIR, COMPILED_RESULTS_FILE, ALL_REJECTIONS_FILE } from './config';
 import { slugify } from './utils/slugify';
 import * as logger from './utils/logger';
+import { loadEnvFileIfProvided } from './utils/env-loader';
 
 // Score thresholds
 const SCORE_PASS_THRESHOLD = 7;
@@ -225,6 +226,7 @@ export async function compileResults(): Promise<CompileOutput> {
  * Main entry point
  */
 export async function main(): Promise<void> {
+  await loadEnvFileIfProvided(process.argv.slice(2));
   logger.info('Starting compile results...');
   
   try {

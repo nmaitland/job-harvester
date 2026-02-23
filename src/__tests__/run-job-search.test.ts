@@ -75,10 +75,16 @@ describe('parseArgs', () => {
     expect(result.dryRun).toBe(true);
   });
 
+  it('should parse --env-file', () => {
+    const result = parseArgs(['--env-file', '.env.dev']);
+    expect(result.envFile).toBe('.env.dev');
+  });
+
   it('should parse combined args', () => {
-    const result = parseArgs(['--phase', 'all', '--dry-run']);
+    const result = parseArgs(['--phase', 'all', '--dry-run', '--env-file', '.env.local']);
     expect(result.phase).toBe('all');
     expect(result.dryRun).toBe(true);
+    expect(result.envFile).toBe('.env.local');
   });
 });
 

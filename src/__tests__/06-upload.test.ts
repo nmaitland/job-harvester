@@ -32,9 +32,7 @@ jest.mock('@microsoft/microsoft-graph-client', () => ({
 jest.mock('googleapis', () => ({
   google: {
     auth: {
-      GoogleAuth: jest.fn().mockImplementation(() => ({
-        getClient: jest.fn(),
-      })),
+      JWT: jest.fn().mockImplementation(() => ({})),
     },
     drive: jest.fn().mockImplementation(() => ({
       files: {
@@ -77,14 +75,20 @@ describe('uploadPdfsToGoogleDrive', () => {
   });
 
   it('should return empty result when no service account key', async () => {
-    const result = await uploadPdfsToGoogleDrive('', []);
+    const result = await uploadPdfsToGoogleDrive('', 'user@example.com', []);
+    expect(result.count).toBe(0);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('should return empty result when no impersonated user', async () => {
+    const result = await uploadPdfsToGoogleDrive('{"client_email":"test","private_key":"key"}', '', []);
     expect(result.count).toBe(0);
     expect(result.errors).toEqual([]);
   });
 
   it('should return empty result when no folder ID', async () => {
     process.env.GOOGLE_DRIVE_FOLDER_ID = '';
-    const result = await uploadPdfsToGoogleDrive('{"key":"value"}', []);
+    const result = await uploadPdfsToGoogleDrive('{"client_email":"test","private_key":"key"}', 'user@example.com', []);
     expect(result.count).toBe(0);
     expect(result.errors).toEqual([]);
   });
@@ -108,7 +112,7 @@ describe('uploadPdfsToGoogleDrive', () => {
     ];
 
     // The function reads pdfs from file, so we don't need to mock readFile here
-    const result = await uploadPdfsToGoogleDrive('{"client_email":"test","private_key":"key"}', pdfs);
+    const result = await uploadPdfsToGoogleDrive('{"client_email":"test","private_key":"key"}', 'user@example.com', pdfs);
 
     // Empty paths are filtered out before attempting upload
     // Note: The actual upload may fail due to mocking, but we're testing the filter logic

@@ -9,6 +9,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as logger from './utils/logger';
 import { DATA_DIR } from './config';
+import { loadEnvFileIfProvided } from './utils/env-loader';
 
 // Import all script main functions
 import { main as discoverMain } from './01-discover';
@@ -37,6 +38,7 @@ interface CliArgs {
   phase: Phase;
   runDir: string | undefined;
   dryRun: boolean;
+  envFile: string | undefined;
 }
 
 /**
@@ -47,6 +49,7 @@ export function parseArgs(args: string[]): CliArgs {
     phase: 'pre',
     runDir: undefined,
     dryRun: false,
+    envFile: undefined,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -64,6 +67,9 @@ export function parseArgs(args: string[]): CliArgs {
       i++;
     } else if (arg === '--dry-run') {
       result.dryRun = true;
+    } else if (arg === '--env-file' && i + 1 < args.length) {
+      result.envFile = args[i + 1];
+      i++;
     }
   }
 
@@ -293,6 +299,7 @@ export async function runPostPhase(runDir: string, dryRun: boolean): Promise<voi
  */
 export async function main(): Promise<void> {
   try {
+    await loadEnvFileIfProvided(process.argv.slice(2));
     const args = parseArgs(process.argv.slice(2));
 
     let runDir: string;

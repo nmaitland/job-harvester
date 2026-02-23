@@ -12,6 +12,7 @@ import type { DiscoveredJob, DiscoveryOutput } from './types';
 import { DISCOVERED_JOBS_FILE, EMAILS_DIR, DATA_DIR } from './config';
 import * as logger from './utils/logger';
 import { getSecrets } from './utils/secrets';
+import { loadEnvFileIfProvided } from './utils/env-loader';
 
 // Brave Search API configuration
 const BRAVE_API_BASE = 'https://api.search.brave.com/res/v1/web/search';
@@ -23,6 +24,14 @@ const LINKEDIN_SEARCH_TERMS = ['CTO', 'Solution Architect', 'Software Engineerin
 // Gmail configuration
 const GMAIL_MAX_RESULTS = 40;
 const GMAIL_LABEL = 'Jobs-2025-Adverts';
+
+function getGmailUserId(): string {
+  return process.env.GOOGLE_GMAIL_IMPERSONATED_USER ?? 'neil@hydeabbey.net';
+}
+
+function shouldMarkGmailAsRead(): boolean {
+  return (process.env.GMAIL_MARK_AS_READ ?? 'true').toLowerCase() === 'true';
+}
 
 interface GmailEmailEntry {
   id: string;
@@ -59,17 +68,15 @@ async function loadSecrets(): Promise<{
   braveApiKey: string;
   linkedinUsername: string;
   linkedinPassword: string;
-  googleClientId: string;
-  googleClientSecret: string;
-  googleRefreshToken: string;
+  googleServiceAccountKey: string;
+  googleGmailImpersonatedUser: string;
 }> {
   const secrets = await getSecrets({
     braveApiKey: 'BRAVE_API_KEY',
     linkedinUsername: 'LINKEDIN_USERNAME',
     linkedinPassword: 'LINKEDIN_PASSWORD',
-    googleClientId: 'GOOGLE_CLIENT_ID',
-    googleClientSecret: 'GOOGLE_CLIENT_SECRET',
-    googleRefreshToken: 'GOOGLE_REFRESH_TOKEN',
+    googleServiceAccountKey: 'GOOGLE_SERVICE_ACCOUNT_KEY',
+    googleGmailImpersonatedUser: 'GOOGLE_GMAIL_IMPERSONATED_USER',
   });
 
   if (secrets.braveApiKey === '') {
@@ -78,8 +85,8 @@ async function loadSecrets(): Promise<{
   if (secrets.linkedinUsername === '' || secrets.linkedinPassword === '') {
     logger.warn('LinkedIn credentials not set - LinkedIn search will be skipped');
   }
-  if (secrets.googleRefreshToken === '') {
-    logger.warn('Google refresh token not set - Gmail will be skipped');
+  if (secrets.googleServiceAccountKey === '' || secrets.googleGmailImpersonatedUser === '') {
+    logger.warn('Google service-account Gmail settings not set - Gmail will be skipped');
   }
 
   return secrets;
@@ -307,27 +314,38 @@ export async function discoverViaLinkedIn(
  * Download Gmail emails
  */
 export async function downloadGmailEmails(
-  clientId: string,
-  clientSecret: string,
-  refreshToken: string
+  serviceAccountKey: string,
+  impersonatedUser: string
 ): Promise<GmailEmailEntry[]> {
   const entries: GmailEmailEntry[] = [];
+  const gmailUserId = getGmailUserId();
+  const markAsRead = shouldMarkGmailAsRead();
 
-  if (refreshToken === '') {
-    logger.warn('Skipping Gmail - no refresh token');
+  if (serviceAccountKey === '') {
+    logger.warn('Skipping Gmail - missing service account key');
     return entries;
   }
 
-  // Create Gmail client
-  const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
-  oauth2Client.setCredentials({ refresh_token: refreshToken });
-
-  const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+  if (impersonatedUser === '') {
+    logger.warn('Skipping Gmail - missing Gmail impersonated user');
+    return entries;
+  }
 
   try {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const credentials: { client_email: string; private_key: string } = JSON.parse(serviceAccountKey);
+    const auth = new google.auth.JWT({
+      email: credentials.client_email,
+      key: credentials.private_key,
+      scopes: ['https://www.googleapis.com/auth/gmail.modify'],
+      subject: impersonatedUser,
+    });
+
+    const gmail = google.gmail({ version: 'v1', auth });
+
     // List unread messages in Jobs label
     const listResponse = await gmail.users.messages.list({
-      userId: 'me',
+      userId: gmailUserId,
       labelIds: [GMAIL_LABEL],
       q: 'is:unread',
       maxResults: GMAIL_MAX_RESULTS,
@@ -345,7 +363,7 @@ export async function downloadGmailEmails(
       try {
         // Get full message
         const msgResponse = await gmail.users.messages.get({
-          userId: 'me',
+          userId: gmailUserId,
           id: message.id,
           format: 'full',
         });
@@ -375,14 +393,16 @@ export async function downloadGmailEmails(
           filePath,
         });
 
-        // Mark as read
-        await gmail.users.messages.modify({
-          userId: 'me',
-          id: message.id,
-          requestBody: {
-            removeLabelIds: ['UNREAD'],
-          },
-        });
+        // Mark as read (optional)
+        if (markAsRead) {
+          await gmail.users.messages.modify({
+            userId: gmailUserId,
+            id: message.id,
+            requestBody: {
+              removeLabelIds: ['UNREAD'],
+            },
+          });
+        }
       } catch (error) {
         logger.error(`Failed to process Gmail message ${message.id}: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -473,6 +493,8 @@ export function deduplicateByUrl(jobs: DiscoveredJob[]): DiscoveredJob[] {
  * Main entry point
  */
 export async function main(): Promise<void> {
+  await loadEnvFileIfProvided(process.argv.slice(2));
+
   logger.info('Starting discovery...');
 
   const secrets = await loadSecrets();
@@ -505,9 +527,8 @@ export async function main(): Promise<void> {
 
     // Download Gmail emails
     const gmailEntries = await downloadGmailEmails(
-      secrets.googleClientId,
-      secrets.googleClientSecret,
-      secrets.googleRefreshToken
+      secrets.googleServiceAccountKey,
+      secrets.googleGmailImpersonatedUser
     );
     log.gmail.count = gmailEntries.length;
     logger.info(`Gmail download: ${gmailEntries.length} emails`);

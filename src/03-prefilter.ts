@@ -10,6 +10,7 @@ import * as path from 'path';
 import type { JobSpec, FilterVerdict, PreFilterOutput, RejectionReason } from './types';
 import { FETCHED_SPECS_FILE, PRE_FILTER_SURVIVORS_FILE, PRE_FILTER_REJECTIONS_FILE, APPLIED_COMPANIES_FILE, JUNIOR_KEYWORDS } from './config';
 import * as logger from './utils/logger';
+import { loadEnvFileIfProvided } from './utils/env-loader';
 
 // Path to processed jobs tracking file
 const PROCESSED_JOBS_FILE = path.join(__dirname, '..', '..', '..', 'memory', 'job-search-processed.json');
@@ -218,6 +219,7 @@ export async function runPreFilter(specs: JobSpec[]): Promise<PreFilterOutput> {
  * Main entry point
  */
 export async function main(): Promise<void> {
+  await loadEnvFileIfProvided(process.argv.slice(2));
   logger.info('Starting pre-filter...');
   
   try {
