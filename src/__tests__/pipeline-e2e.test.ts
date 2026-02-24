@@ -97,7 +97,7 @@ describe('pipeline stage handoff e2e', () => {
     const compiledJob = compileJson.jobs.find(job => job.company === 'Compile Company E2E');
     expect(compiledJob?.specText).toContain('must survive compile');
 
-    const uploadModule = await import('../06-upload');
+    const uploadModule = await import('../07-upload');
     await uploadModule.main();
 
     const uploadResultsPath = path.join(runDir, 'upload-results.json');

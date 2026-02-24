@@ -16,8 +16,8 @@ import { main as fetchSpecsMain } from './02-fetch-specs';
 import { main as prefilterMain } from './03-prefilter';
 import { main as compileResultsMain } from './04-compile-results';
 import { main as generatePdfsMain } from './05-generate-pdfs';
-import { main as summarizeRunMain } from './07-summarize-run';
-import { main as uploadMain } from './06-upload';
+import { main as summarizeRunMain } from './06-summarize-run';
+import { main as uploadMain } from './07-upload';
 
 type Phase = 'pre' | 'post' | 'all';
 
@@ -190,13 +190,13 @@ export async function writeRunManifest(runDir: string, phase: Phase): Promise<vo
         description: 'Generated PDFs for PASS/REVIEW jobs',
       },
       'run-summary/*.txt': {
-        owner: '07-summarize-run.ts',
+        owner: '06-summarize-run.ts',
         aiMayRead: true,
         aiMayWrite: false,
         description: 'Human-readable run summary and review list',
       },
       'upload-results.json': {
-        owner: '06-upload.ts',
+        owner: '07-upload.ts',
         aiMayRead: true,
         aiMayWrite: false,
         description: 'Upload results with cloud URLs',
@@ -243,10 +243,10 @@ export async function runScript(scriptName: string, _runDir: string, dryRun: boo
       case '05-generate-pdfs':
         await generatePdfsMain();
         break;
-      case '07-summarize-run':
+      case '06-summarize-run':
         await summarizeRunMain();
         break;
-      case '06-upload':
+      case '07-upload':
         await uploadMain();
         break;
       default:
@@ -306,8 +306,8 @@ export async function runPostPhase(runDir: string, dryRun: boolean): Promise<voi
   await writeRunManifest(runDir, 'post');
   await runScript('04-compile-results', runDir, dryRun);
   await runScript('05-generate-pdfs', runDir, dryRun);
-  await runScript('07-summarize-run', runDir, dryRun);
-  await runScript('06-upload', runDir, dryRun);
+  await runScript('06-summarize-run', runDir, dryRun);
+  await runScript('07-upload', runDir, dryRun);
 
   logger.success('Post-AI pipeline complete');
 }

@@ -11,8 +11,8 @@ The pipeline consists of 7 standalone scripts that can be run independently or o
 3. **03-prefilter.ts** - Applies deterministic filters (fetch_failed, already_applied, already_sent, junior_role)
 4. **04-compile-results.ts** - Merges AI scores with pre-filter results, applies thresholds
 5. **05-generate-pdfs.ts** - Generates PDFs from job specifications using Playwright
-6. **07-summarize-run.ts** - Builds human-readable run summary files (AI narrative with deterministic fallback)
-7. **06-upload.ts** - Uploads PDFs and summary artifacts to OneDrive and Google Drive archive folders
+6. **06-summarize-run.ts** - Builds human-readable run summary files (AI narrative with deterministic fallback)
+7. **07-upload.ts** - Uploads PDFs and summary artifacts to OneDrive and Google Drive archive folders
 
 AI helper scripts for manual AI handoff steps:
 
@@ -30,8 +30,8 @@ AI helper scripts for manual AI handoff steps:
 | `job-scores/*.json` | AI | 04-compile-results.ts |
 | `compile-results.json` | 04-compile-results.ts | 05-generate-pdfs.ts |
 | `all-rejections.json` | 04-compile-results.ts | - |
-| `pdfs/*.pdf` | 05-generate-pdfs.ts | 06-upload.ts |
-| `run-summary/*.txt` | 07-summarize-run.ts | 06-upload.ts |
+| `pdfs/*.pdf` | 05-generate-pdfs.ts | 07-upload.ts |
+| `run-summary/*.txt` | 06-summarize-run.ts | 07-upload.ts |
 
 ## Installation
 
@@ -52,7 +52,7 @@ GOOGLE_SERVICE_ACCOUNT_KEY={"type":"service_account","project_id":"...","private
 GOOGLE_GMAIL_IMPERSONATED_USER=mailbox-user@your-domain.com
 GOOGLE_DRIVE_IMPERSONATED_USER=drive-user@your-domain.com
 
-# OneDrive (06-upload.ts expects an access token)
+# OneDrive (07-upload.ts expects an access token)
 ONEDRIVE_ACCESS_TOKEN=your_access_token
 
 # OpenRouter (AI Step 1 + AI Step 2 helper scripts)
@@ -78,8 +78,8 @@ JOB_HARVESTER_MANAGEMENT_DATA_DIR=.
 Notes:
 
 - Gmail discovery in [`main()`](src/01-discover.ts:549) is skipped when [`GOOGLE_SERVICE_ACCOUNT_KEY`](README.md) or [`GOOGLE_GMAIL_IMPERSONATED_USER`](README.md) is unset/empty.
-- OneDrive upload in [`main()`](src/06-upload.ts:236) is skipped when [`ONEDRIVE_ACCESS_TOKEN`](README.md) is unset/empty.
-- Google Drive upload in [`uploadPdfsToGoogleDrive()`](src/06-upload.ts:143) is skipped when [`GOOGLE_SERVICE_ACCOUNT_KEY`](README.md), [`GOOGLE_DRIVE_IMPERSONATED_USER`](README.md), or [`GOOGLE_DRIVE_FOLDER_ID`](README.md) is unset/empty.
+- OneDrive upload in [`main()`](src/07-upload.ts:346) is skipped when [`ONEDRIVE_ACCESS_TOKEN`](README.md) is unset/empty.
+- Google Drive upload in [`uploadPdfsToGoogleDrive()`](src/07-upload.ts:188) is skipped when [`GOOGLE_SERVICE_ACCOUNT_KEY`](README.md), [`GOOGLE_DRIVE_IMPERSONATED_USER`](README.md), or [`GOOGLE_DRIVE_FOLDER_ID`](README.md) is unset/empty.
 - Gmail read-state behavior is controlled by [`GMAIL_MARK_AS_READ`](README.md) (`true` by default).
 - [`JOB_HARVESTER_WORK_DIR`](README.md) is required and controls pipeline outputs (`discovered-jobs.json`, `fetched-specs.json`, `specs/`, `pdfs/`, etc.).
 - [`JOB_HARVESTER_MANAGEMENT_DATA_DIR`](README.md) controls operator-managed files (`applied-companies.txt`, `cv-keywords.md`, `job-search-processed.json`).
@@ -160,7 +160,7 @@ Cloud upload structure per run:
 - OneDrive path: `JobSpecs/archive-<run-timestamp>/...`
 - Google Drive: created subfolder `archive-<run-timestamp>` under `GOOGLE_DRIVE_FOLDER_ID`
 
-### Run summary process (`07-summarize-run.ts`)
+### Run summary process (`06-summarize-run.ts`)
 
 The summary step reads run artifacts and produces two human-readable text files:
 
@@ -231,8 +231,8 @@ job-harvester/
 │   ├── 03-prefilter.ts         # Pre-filter script
 │   ├── 04-compile-results.ts   # Compile results
 │   ├── 05-generate-pdfs.ts     # PDF generation
-│   ├── 07-summarize-run.ts     # Run summary generation
-│   ├── 06-upload.ts            # Upload script
+│   ├── 06-summarize-run.ts     # Run summary generation
+│   ├── 07-upload.ts            # Upload script
 │   ├── run-job-search.ts       # Orchestrator
 │   ├── types.ts                # Shared TypeScript types
 │   ├── config.ts               # Configuration constants
