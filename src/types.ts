@@ -158,6 +158,19 @@ export interface PDFOutput {
 }
 
 // ============================================================================
+// Run Summary Types (07-summarize-run.ts)
+// ============================================================================
+
+export interface RunSummaryOutput {
+  timestamp: string;
+  runDir: string;
+  summaryLogFile: string;
+  reviewJobsFile: string;
+  metadataFile: string;
+  aiUsed: boolean;
+}
+
+// ============================================================================
 // Upload Types (06-upload.ts)
 // ============================================================================
 
@@ -174,6 +187,8 @@ export interface UploadResult {
 export interface UploadOutput {
   uploads: UploadResult[];
   timestamp: string;
+  archiveFolderName?: string;
+  googleDriveFolderId?: string;
   stats: {
     total: number;
     success: number;

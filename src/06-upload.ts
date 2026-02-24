@@ -26,6 +26,13 @@ interface UploadLog {
   googledrive: { count: number; errors: string[] };
 }
 
+interface GoogleDriveUploadResult {
+  count: number;
+  errors: string[];
+  uploads: UploadResult[];
+  folderId: string | undefined;
+}
+
 /**
  * Load credentials from environment
  */
@@ -69,6 +76,18 @@ function getUploadResultsFile(): string {
   return path.join(resolveDataDir(), 'upload-results.json');
 }
 
+function getRunSummaryDir(): string {
+  return path.join(resolveDataDir(), 'run-summary');
+}
+
+function getArchiveFolderName(runDir: string): string {
+  const base = path.basename(runDir);
+  if (base.startsWith('run-')) {
+    return `archive-${base.slice(4)}`;
+  }
+  return `archive-${base}`;
+}
+
 /**
  * Upload specs to OneDrive
  */
@@ -77,7 +96,8 @@ export async function uploadSpecsToOneDrive(
   specsDir: string,
   folderName: string,
   compileResultsFile: string,
-  allRejectionsFile: string
+  allRejectionsFile: string,
+  summaryFiles: Array<{ name: string; path: string }>
 ): Promise<{ count: number; errors: string[] }> {
   const result = { count: 0, errors: [] as string[] };
 
@@ -104,6 +124,7 @@ export async function uploadSpecsToOneDrive(
     const extraFiles = [
       { name: 'compile-results.json', path: compileResultsFile },
       { name: 'all-rejections.json', path: allRejectionsFile },
+      ...summaryFiles,
     ];
 
     // Upload spec files
@@ -167,9 +188,16 @@ export async function uploadSpecsToOneDrive(
 export async function uploadPdfsToGoogleDrive(
   serviceAccountKey: string,
   impersonatedUser: string,
-  pdfs: PDFResult[]
-): Promise<{ count: number; errors: string[]; uploads: UploadResult[] }> {
-  const result = { count: 0, errors: [] as string[], uploads: [] as UploadResult[] };
+  pdfs: PDFResult[],
+  archiveFolderName: string,
+  summaryFiles: Array<{ name: string; path: string }>
+): Promise<GoogleDriveUploadResult> {
+  const result: GoogleDriveUploadResult = {
+    count: 0,
+    errors: [],
+    uploads: [],
+    folderId: undefined,
+  };
 
   if (serviceAccountKey === '') {
     logger.warn('Skipping Google Drive upload - no service account key');
@@ -204,6 +232,21 @@ export async function uploadPdfsToGoogleDrive(
 
     const drive = google.drive({ version: 'v3', auth });
 
+    const folderResponse = await drive.files.create({
+      requestBody: {
+        name: archiveFolderName,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [GOOGLE_DRIVE_FOLDER_ID],
+      },
+      fields: 'id',
+    });
+
+    const archiveFolderId = folderResponse.data.id ?? undefined;
+    if (archiveFolderId === undefined) {
+      throw new Error('Failed to create archive folder in Google Drive');
+    }
+    result.folderId = archiveFolderId;
+
     // Upload each PDF
     for (const pdf of pdfs) {
       try {
@@ -221,7 +264,7 @@ export async function uploadPdfsToGoogleDrive(
             () => drive.files.create({
               requestBody: {
                 name: fileName,
-                parents: [GOOGLE_DRIVE_FOLDER_ID],
+                parents: [archiveFolderId],
               },
               media: {
                 mimeType: 'application/pdf',
@@ -254,6 +297,40 @@ export async function uploadPdfsToGoogleDrive(
         result.errors.push(errorMsg);
       }
     }
+
+    for (const summaryFile of summaryFiles) {
+      try {
+        if (!existsSync(summaryFile.path)) {
+          continue;
+        }
+
+        await withTimeout(
+          retry(
+            () => drive.files.create({
+              requestBody: {
+                name: summaryFile.name,
+                parents: [archiveFolderId],
+              },
+              media: {
+                mimeType: 'text/plain',
+                body: createReadStream(summaryFile.path),
+              },
+              fields: 'id',
+            }),
+            { maxAttempts: 2, delayMs: 1000 }
+          ),
+          60000,
+          `Google Drive upload ${summaryFile.name}`
+        );
+
+        result.count++;
+        logger.info(`Uploaded to Google Drive: ${summaryFile.name}`);
+      } catch (error) {
+        const errorMsg = `Failed to upload ${summaryFile.path}: ${error instanceof Error ? error.message : String(error)}`;
+        logger.error(errorMsg);
+        result.errors.push(errorMsg);
+      }
+    }
   } catch (error) {
     const errorMsg = `Google Drive upload failed: ${error instanceof Error ? error.message : String(error)}`;
     logger.error(errorMsg);
@@ -271,13 +348,18 @@ export async function main(): Promise<void> {
   logger.info('Starting upload...');
   const specsDir = getSpecsDir();
   const pdfsDir = getPdfsDir();
+  const runSummaryDir = getRunSummaryDir();
   const compileResultsFile = getCompiledResultsFile();
   const allRejectionsFile = getAllRejectionsFile();
   const uploadResultsFile = getUploadResultsFile();
+  const archiveFolderName = getArchiveFolderName(resolveDataDir());
 
   const credentials = await loadCredentials();
   const timestamp = new Date().toISOString();
-  const folderName = timestamp.split('T')[0];
+  const summaryFiles = [
+    { name: 'summary-log.txt', path: path.join(runSummaryDir, 'summary-log.txt') },
+    { name: 'review-jobs.txt', path: path.join(runSummaryDir, 'review-jobs.txt') },
+  ];
 
   const log: UploadLog = {
     timestamp,
@@ -286,16 +368,14 @@ export async function main(): Promise<void> {
   };
 
   try {
-    if (folderName === undefined) {
-      throw new Error('Folder name is required for upload');
-    }
     // Upload specs to OneDrive
     const oneDriveResult = await uploadSpecsToOneDrive(
       credentials.oneDriveToken,
       specsDir,
-      folderName,
+      archiveFolderName,
       compileResultsFile,
-      allRejectionsFile
+      allRejectionsFile,
+      summaryFiles
     );
     log.onedrive = oneDriveResult;
     logger.info(`OneDrive upload: ${oneDriveResult.count} files`);
@@ -318,7 +398,9 @@ export async function main(): Promise<void> {
     const googleDriveResult = await uploadPdfsToGoogleDrive(
       credentials.googleServiceAccount,
       credentials.googleDriveImpersonatedUser,
-      pdfs
+      pdfs,
+      archiveFolderName,
+      summaryFiles
     );
     log.googledrive = {
       count: googleDriveResult.count,
@@ -330,6 +412,8 @@ export async function main(): Promise<void> {
     const output: UploadOutput = {
       uploads: googleDriveResult.uploads,
       timestamp,
+      archiveFolderName,
+      ...(googleDriveResult.folderId !== undefined ? { googleDriveFolderId: googleDriveResult.folderId } : {}),
       stats: {
         total: pdfs.length,
         success: googleDriveResult.count,

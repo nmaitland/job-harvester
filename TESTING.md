@@ -23,6 +23,9 @@ Each script has a corresponding test file:
 
 - `03-prefilter.ts` → `03-prefilter.test.ts`
 - `04-compile-results.ts` → `04-compile-results.test.ts`
+- `05-generate-pdfs.ts` → `05-generate-pdfs.test.ts`
+- `06-upload.ts` → `06-upload.test.ts`
+- `07-summarize-run.ts` → `07-summarize-run.test.ts`
 
 ## Mocking Strategy
 
@@ -102,5 +105,5 @@ const jobSpec: JobSpec = {
 Tests should pass before merging:
 
 ```bash
-npm run lint && npm test && npx tsc --noEmit
+npm run lint && npm run check-types && npm run build && npm run test:ci
 ```

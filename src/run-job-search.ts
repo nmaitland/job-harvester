@@ -16,6 +16,7 @@ import { main as fetchSpecsMain } from './02-fetch-specs';
 import { main as prefilterMain } from './03-prefilter';
 import { main as compileResultsMain } from './04-compile-results';
 import { main as generatePdfsMain } from './05-generate-pdfs';
+import { main as summarizeRunMain } from './07-summarize-run';
 import { main as uploadMain } from './06-upload';
 
 type Phase = 'pre' | 'post' | 'all';
@@ -188,6 +189,12 @@ export async function writeRunManifest(runDir: string, phase: Phase): Promise<vo
         aiMayWrite: false,
         description: 'Generated PDFs for PASS/REVIEW jobs',
       },
+      'run-summary/*.txt': {
+        owner: '07-summarize-run.ts',
+        aiMayRead: true,
+        aiMayWrite: false,
+        description: 'Human-readable run summary and review list',
+      },
       'upload-results.json': {
         owner: '06-upload.ts',
         aiMayRead: true,
@@ -235,6 +242,9 @@ export async function runScript(scriptName: string, _runDir: string, dryRun: boo
         break;
       case '05-generate-pdfs':
         await generatePdfsMain();
+        break;
+      case '07-summarize-run':
+        await summarizeRunMain();
         break;
       case '06-upload':
         await uploadMain();
@@ -296,6 +306,7 @@ export async function runPostPhase(runDir: string, dryRun: boolean): Promise<voi
   await writeRunManifest(runDir, 'post');
   await runScript('04-compile-results', runDir, dryRun);
   await runScript('05-generate-pdfs', runDir, dryRun);
+  await runScript('07-summarize-run', runDir, dryRun);
   await runScript('06-upload', runDir, dryRun);
 
   logger.success('Post-AI pipeline complete');

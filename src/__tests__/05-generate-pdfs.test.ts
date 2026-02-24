@@ -14,7 +14,7 @@ jest.mock('../utils/logger', () => ({
 }));
 
 describe('buildFilename', () => {
-  it('should not add prefix for PASS jobs', () => {
+  it('should include date, score, company, and advert for PASS jobs', () => {
     const job = {
       jobId: '1',
       company: 'Google',
@@ -31,11 +31,10 @@ describe('buildFilename', () => {
     };
 
     const result = buildFilename(job);
-    expect(result).toBe('2024-01-15-google-advert.pdf');
-    expect(result).not.toContain('REVIEW');
+    expect(result).toBe('2024-01-15-S8-google-advert.pdf');
   });
 
-  it('should add REVIEW- prefix for REVIEW jobs', () => {
+  it('should include same format for REVIEW jobs', () => {
     const job = {
       jobId: '1',
       company: 'Startup',
@@ -52,7 +51,7 @@ describe('buildFilename', () => {
     };
 
     const result = buildFilename(job);
-    expect(result).toBe('REVIEW-2024-01-20-startup-advert.pdf');
+    expect(result).toBe('2024-01-20-S5-startup-advert.pdf');
   });
 
   it('should slugify company names correctly', () => {
@@ -73,6 +72,7 @@ describe('buildFilename', () => {
 
     const result = buildFilename(job);
     expect(result).toContain('acme-corp-ltd');
+    expect(result).toContain('-S8-');
   });
 });
 

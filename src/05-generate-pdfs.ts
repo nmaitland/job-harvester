@@ -59,10 +59,10 @@ async function loadDefaultEnvIfNeeded(args: string[]): Promise<void> {
  * Build filename for PDF
  */
 export function buildFilename(job: JobWithTier): string {
-  const prefix = job.tier === 'review' ? 'REVIEW-' : '';
-  const date = job.compiledAt.split('T')[0];
+  const date = job.compiledAt.split('T')[0] ?? 'unknown-date';
+  const score = Math.max(0, Math.min(10, Math.round(job.score)));
   const companySlug = slugify(job.company);
-  return `${prefix}${date}-${companySlug}-advert.pdf`;
+  return `${date}-S${score}-${companySlug}-advert.pdf`;
 }
 
 /**
