@@ -10,11 +10,7 @@ import {
   parseScorePayload,
   scoreToVerdict,
 } from './validators';
-
-interface CliArgs {
-  runDir: string | undefined;
-  envFile: string | undefined;
-}
+import { resolveRequiredRunDirFromCli } from '../utils/run-dir';
 
 interface ScoreVerdictFile {
   jobId: string;
@@ -42,37 +38,6 @@ interface Step4Result {
 interface ScoredBatchItem {
   survivor: JobSpec;
   verdict: ScoreVerdictFile;
-}
-
-function parseArgs(args: string[]): CliArgs {
-  const result: CliArgs = {
-    runDir: undefined,
-    envFile: undefined,
-  };
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === '--run-dir' && i + 1 < args.length) {
-      result.runDir = args[i + 1];
-      i++;
-      continue;
-    }
-
-    if (arg === '--env-file' && i + 1 < args.length) {
-      result.envFile = args[i + 1];
-      i++;
-    }
-  }
-
-  return result;
-}
-
-function resolveRunDir(args: CliArgs): string {
-  const runDir = args.runDir ?? process.env.JOB_HARVESTER_WORK_DIR;
-  if (runDir === undefined || runDir === '') {
-    throw new Error('--run-dir is required (or set JOB_HARVESTER_WORK_DIR)');
-  }
-  return runDir;
 }
 
 function resolveManagementDataDir(): string {
@@ -360,10 +325,10 @@ export async function runStep4(runDir: string): Promise<Step4Result> {
   return result;
 }
 
-export async function main(): Promise<void> {
-  await loadEnvFileIfProvided(process.argv.slice(2));
-  const args = parseArgs(process.argv.slice(2));
-  const runDir = resolveRunDir(args);
+export async function main(runDirArg?: string): Promise<void> {
+  const argv = process.argv.slice(2);
+  await loadEnvFileIfProvided(argv);
+  const runDir = runDirArg ?? await resolveRequiredRunDirFromCli(argv);
 
   logger.info('Starting AI Step 2: score pre-filter survivors');
   const result = await runStep4(runDir);

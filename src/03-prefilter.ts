@@ -11,6 +11,7 @@ import type { JobSpec, FilterVerdict, PreFilterOutput, RejectionReason } from '.
 import { JUNIOR_KEYWORDS, MANAGEMENT_DATA_DIR } from './config';
 import * as logger from './utils/logger';
 import { loadEnvFileIfProvided } from './utils/env-loader';
+import { resolveRequiredRunDirFromCli } from './utils/run-dir';
 
 function getManagementDataDir(): string {
   const envDir = process.env.JOB_HARVESTER_MANAGEMENT_DATA_DIR;
@@ -28,24 +29,16 @@ function getProcessedJobsFile(): string {
   return path.join(getManagementDataDir(), 'job-search-processed.json');
 }
 
-function resolveDataDir(): string {
-  const envDir = process.env.JOB_HARVESTER_WORK_DIR;
-  if (envDir === undefined || envDir === '') {
-    throw new Error('JOB_HARVESTER_WORK_DIR is required. Set it in environment or via --env-file.');
-  }
-  return envDir;
+function getFetchedSpecsFile(runDir: string): string {
+  return path.join(runDir, 'fetched-specs.json');
 }
 
-function getFetchedSpecsFile(): string {
-  return path.join(resolveDataDir(), 'fetched-specs.json');
+function getPreFilterSurvivorsFile(runDir: string): string {
+  return path.join(runDir, 'pre-filter-survivors.json');
 }
 
-function getPreFilterSurvivorsFile(): string {
-  return path.join(resolveDataDir(), 'pre-filter-survivors.json');
-}
-
-function getPreFilterRejectionsFile(): string {
-  return path.join(resolveDataDir(), 'pre-filter-rejections.json');
+function getPreFilterRejectionsFile(runDir: string): string {
+  return path.join(runDir, 'pre-filter-rejections.json');
 }
 
 /**
@@ -253,12 +246,14 @@ export async function runPreFilter(specs: JobSpec[]): Promise<PreFilterOutput> {
 /**
  * Main entry point
  */
-export async function main(): Promise<void> {
-  await loadEnvFileIfProvided(process.argv.slice(2));
+export async function main(runDirArg?: string): Promise<void> {
+  const args = process.argv.slice(2);
+  await loadEnvFileIfProvided(args);
+  const runDir = runDirArg ?? await resolveRequiredRunDirFromCli(args);
   logger.info('Starting pre-filter...');
-  const fetchedSpecsFile = getFetchedSpecsFile();
-  const preFilterSurvivorsFile = getPreFilterSurvivorsFile();
-  const preFilterRejectionsFile = getPreFilterRejectionsFile();
+  const fetchedSpecsFile = getFetchedSpecsFile(runDir);
+  const preFilterSurvivorsFile = getPreFilterSurvivorsFile(runDir);
+  const preFilterRejectionsFile = getPreFilterRejectionsFile(runDir);
   
   try {
     // Read fetched specs

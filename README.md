@@ -69,9 +69,8 @@ OPENROUTER_STEP4_BATCH_CONCURRENCY=3
 # Google Drive target
 GOOGLE_DRIVE_FOLDER_ID=your_folder_id
 
-# Optional output directories
-# Required output directory
-JOB_HARVESTER_WORK_DIR=./data
+# Required orchestrator root output directory
+JOB_HARVESTER_ROOT_WORK_DIR=./data
 JOB_HARVESTER_MANAGEMENT_DATA_DIR=.
 ```
 
@@ -81,7 +80,8 @@ Notes:
 - OneDrive upload in [`main()`](src/07-upload.ts:346) is skipped when [`ONEDRIVE_ACCESS_TOKEN`](README.md) is unset/empty.
 - Google Drive upload in [`uploadPdfsToGoogleDrive()`](src/07-upload.ts:188) is skipped when [`GOOGLE_SERVICE_ACCOUNT_KEY`](README.md), [`GOOGLE_DRIVE_IMPERSONATED_USER`](README.md), or [`GOOGLE_DRIVE_FOLDER_ID`](README.md) is unset/empty.
 - Gmail read-state behavior is controlled by [`GMAIL_MARK_AS_READ`](README.md) (`true` by default).
-- [`JOB_HARVESTER_WORK_DIR`](README.md) is required and controls pipeline outputs (`discovered-jobs.json`, `fetched-specs.json`, `specs/`, `pdfs/`, etc.).
+- [`JOB_HARVESTER_ROOT_WORK_DIR`](README.md) is required by the orchestrator and is used to create unique run folders (`run-YYYY-MM-DD-HH-mm-ss`).
+- Standalone stage scripts never use root env fallback for run outputs; they require [`--run-dir`](README.md).
 - [`JOB_HARVESTER_MANAGEMENT_DATA_DIR`](README.md) controls operator-managed files (`applied-companies.txt`, `cv-keywords.md`, `job-search-processed.json`).
 - OpenRouter scripts require [`OPENROUTER_API_KEY`](README.md) and [`OPENROUTER_MODEL`](README.md).
 - Parallel batch size for AI calls is controlled by [`OPENROUTER_STEP2_BATCH_CONCURRENCY`](README.md) and [`OPENROUTER_STEP4_BATCH_CONCURRENCY`](README.md).
@@ -101,6 +101,8 @@ Notes:
 4. Set [`GOOGLE_GMAIL_IMPERSONATED_USER`](README.md) and [`GOOGLE_DRIVE_IMPERSONATED_USER`](README.md) to delegated users in your Workspace domain.
 
 ### Run Individual Scripts
+
+All standalone stage scripts require [`--run-dir`](README.md) pointing to an existing `run-YYYY-MM-DD-HH-mm-ss` folder.
 
 ```bash
 npm run discover        # Run discovery phase
@@ -122,10 +124,22 @@ npm run dev:fetch-specs -- --env-file .env.dev
 npm run dev:prefilter -- --env-file .env.dev
 npm run dev:compile -- --env-file .env.dev
 npm run dev:generate-pdfs -- --env-file .env.dev
-npm run dev:summarize -- --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env.dev
-npm run dev:upload -- --env-file .env.dev
-npm run dev:ai-step2 -- --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env.dev
-npm run dev:ai-step4 -- --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env.dev
+npm run dev:summarize -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
+npm run dev:upload -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
+npm run dev:ai-step2 -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
+npm run dev:ai-step4 -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
+```
+
+Example with explicit run dir:
+
+```bash
+npm run dev:discover -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
+npm run dev:fetch-specs -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
+npm run dev:prefilter -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
+npm run dev:compile -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
+npm run dev:generate-pdfs -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
+npm run dev:summarize -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
+npm run dev:upload -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
 ```
 
 ### AI handoff sequence for pre/post orchestrator phases
@@ -135,17 +149,17 @@ npm run dev:ai-step4 -- --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env
 npm run dev:run -- --phase pre --env-file .env.dev
 
 # 2) AI Step 1 - extract additional jobs from Gmail index into discovered-jobs.json
-npm run dev:ai-step2 -- --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env.dev
+npm run dev:ai-step2 -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
 
 # 3) Continue deterministic pipeline stages if needed
-npm run dev:fetch-specs -- --env-file .env.dev
-npm run dev:prefilter -- --env-file .env.dev
+npm run dev:fetch-specs -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
+npm run dev:prefilter -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
 
 # 4) AI Step 2 - score survivors and write job-scores/*.json
-npm run dev:ai-step4 -- --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env.dev
+npm run dev:ai-step4 -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
 
 # 5) Complete post phase
-npm run dev:run -- --phase post --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env.dev
+npm run dev:run -- --phase post --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
 ```
 
 Post phase now runs in this order:
@@ -184,7 +198,7 @@ Narrative generation behavior:
 Manual run example:
 
 ```bash
-npm run dev:summarize -- --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env.dev
+npm run dev:summarize -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
 ```
 
 ### Run Full Pipeline
@@ -197,7 +211,7 @@ Orchestrator also supports `--env-file`:
 
 ```bash
 npm run dev:run -- --phase pre --env-file .env.dev
-npm run dev:run -- --phase post --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env.dev
+npm run dev:run -- --phase post --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
 ```
 
 ## Testing

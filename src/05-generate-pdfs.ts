@@ -12,35 +12,23 @@ import { PDF_CONFIG } from './config';
 import { slugify } from './utils/slugify';
 import * as logger from './utils/logger';
 import { loadEnvFileIfProvided, parseEnvFileArg } from './utils/env-loader';
+import { resolveRequiredRunDirFromCli } from './utils/run-dir';
 
 interface JobWithTier extends CompiledJob {
   tier: 'passed' | 'review';
 }
 
-function resolveDataDir(): string {
-  const envDir = process.env.JOB_HARVESTER_WORK_DIR;
-  if (envDir === undefined || envDir === '') {
-    throw new Error('JOB_HARVESTER_WORK_DIR is required. Set it in environment or via --env-file.');
-  }
-  return envDir;
+function getCompiledResultsFile(runDir: string): string {
+  return path.join(runDir, 'compile-results.json');
 }
 
-function getCompiledResultsFile(): string {
-  return path.join(resolveDataDir(), 'compile-results.json');
-}
-
-function getPdfsDir(): string {
-  return path.join(resolveDataDir(), 'pdfs');
+function getPdfsDir(runDir: string): string {
+  return path.join(runDir, 'pdfs');
 }
 
 async function loadDefaultEnvIfNeeded(args: string[]): Promise<void> {
   const { envFile } = parseEnvFileArg(args);
   if (envFile !== undefined && envFile !== '') {
-    return;
-  }
-
-  const workDir = process.env.JOB_HARVESTER_WORK_DIR;
-  if (workDir !== undefined && workDir !== '') {
     return;
   }
 
@@ -195,13 +183,14 @@ export async function generateJobPdf(
 /**
  * Main entry point
  */
-export async function main(): Promise<void> {
+export async function main(runDirArg?: string): Promise<void> {
   const args = process.argv.slice(2);
   await loadEnvFileIfProvided(args);
   await loadDefaultEnvIfNeeded(args);
+  const runDir = runDirArg ?? await resolveRequiredRunDirFromCli(args);
   logger.info('Starting PDF generation...');
-  const compiledResultsFile = getCompiledResultsFile();
-  const pdfsDir = getPdfsDir();
+  const compiledResultsFile = getCompiledResultsFile(runDir);
+  const pdfsDir = getPdfsDir(runDir);
 
   try {
     // Read compiled results

@@ -13,7 +13,6 @@ describe('pipeline stage handoff e2e', () => {
 
   it('runs 03-prefilter main against 02-fetch-specs output shape', async () => {
     const runDir = await createTempRunDir();
-    process.env.JOB_HARVESTER_WORK_DIR = runDir;
 
     const fetchedSpecs = {
       specs: [
@@ -37,7 +36,7 @@ describe('pipeline stage handoff e2e', () => {
     await fs.writeFile(path.join(runDir, 'fetched-specs.json'), JSON.stringify(fetchedSpecs), 'utf-8');
 
     const module = await import('../03-prefilter');
-    await module.main();
+    await module.main(runDir);
 
     const survivorsContent = await fs.readFile(path.join(runDir, 'pre-filter-survivors.json'), 'utf-8');
     const survivors = JSON.parse(survivorsContent) as Array<{ id: string }>;
@@ -48,7 +47,6 @@ describe('pipeline stage handoff e2e', () => {
 
   it('preserves spec text through compile and writes upload results at run root', async () => {
     const runDir = await createTempRunDir();
-    process.env.JOB_HARVESTER_WORK_DIR = runDir;
 
     await fs.mkdir(path.join(runDir, 'job-scores'), { recursive: true });
     await fs.mkdir(path.join(runDir, 'pdfs'), { recursive: true });
@@ -88,7 +86,7 @@ describe('pipeline stage handoff e2e', () => {
     );
 
     const compileModule = await import('../04-compile-results');
-    await compileModule.main();
+    await compileModule.main(runDir);
 
     const compileContent = await fs.readFile(path.join(runDir, 'compile-results.json'), 'utf-8');
     const compileJson = JSON.parse(compileContent) as {
@@ -98,7 +96,7 @@ describe('pipeline stage handoff e2e', () => {
     expect(compiledJob?.specText).toContain('must survive compile');
 
     const uploadModule = await import('../07-upload');
-    await uploadModule.main();
+    await uploadModule.main(runDir);
 
     const uploadResultsPath = path.join(runDir, 'upload-results.json');
     const uploadResults = await fs.readFile(uploadResultsPath, 'utf-8');

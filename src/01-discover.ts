@@ -13,25 +13,14 @@ import * as logger from './utils/logger';
 import { getSecrets } from './utils/secrets';
 import { loadEnvFileIfProvided } from './utils/env-loader';
 import { sleep } from './utils/http';
+import { resolveRequiredRunDirFromCli } from './utils/run-dir';
 
-function resolveDataDir(): string {
-  const envDir = process.env.JOB_HARVESTER_WORK_DIR;
-  if (envDir === undefined || envDir === '') {
-    throw new Error('JOB_HARVESTER_WORK_DIR is required. Set it in environment or via --env-file.');
-  }
-  return envDir;
+function getEmailsDir(runDir: string): string {
+  return path.join(runDir, 'emails');
 }
 
-function getDataDir(): string {
-  return resolveDataDir();
-}
-
-function getEmailsDir(): string {
-  return path.join(resolveDataDir(), 'emails');
-}
-
-function getDiscoveredJobsFile(): string {
-  return path.join(resolveDataDir(), 'discovered-jobs.json');
+function getDiscoveredJobsFile(runDir: string): string {
+  return path.join(runDir, 'discovered-jobs.json');
 }
 
 // Brave Search API configuration
@@ -505,10 +494,11 @@ export async function discoverViaLinkedIn(
  */
 export async function downloadGmailEmails(
   serviceAccountKey: string,
-  impersonatedUser: string
+  impersonatedUser: string,
+  runDir: string
 ): Promise<GmailEmailEntry[]> {
   const entries: GmailEmailEntry[] = [];
-  const emailsDir = getEmailsDir();
+  const emailsDir = getEmailsDir(runDir);
   const gmailUserId = getGmailUserId();
   const gmailLabel = getGmailLabel();
   const gmailLabelQuery = toGmailLabelQuery(gmailLabel);
@@ -688,10 +678,11 @@ export function deduplicateByUrl(jobs: DiscoveredJob[]): DiscoveredJob[] {
 /**
  * Main entry point
  */
-export async function main(): Promise<void> {
-  await loadEnvFileIfProvided(process.argv.slice(2));
-  const dataDir = getDataDir();
-  const discoveredJobsFile = getDiscoveredJobsFile();
+export async function main(runDirArg?: string): Promise<void> {
+  const args = process.argv.slice(2);
+  await loadEnvFileIfProvided(args);
+  const dataDir = runDirArg ?? await resolveRequiredRunDirFromCli(args);
+  const discoveredJobsFile = getDiscoveredJobsFile(dataDir);
 
   logger.info('Starting discovery...');
 
@@ -722,7 +713,8 @@ export async function main(): Promise<void> {
     // Download Gmail emails
     const gmailEntries = await downloadGmailEmails(
       secrets.googleServiceAccountKey,
-      secrets.googleGmailImpersonatedUser
+      secrets.googleGmailImpersonatedUser,
+      dataDir
     );
     log.gmail.count = gmailEntries.length;
     logger.info(`Gmail download: ${gmailEntries.length} emails`);

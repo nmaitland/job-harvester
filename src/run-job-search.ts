@@ -9,6 +9,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as logger from './utils/logger';
 import { loadEnvFileIfProvided } from './utils/env-loader';
+import { assertValidRunDirName, requireExistingRunDir, resolveRootWorkDirFromEnv } from './utils/run-dir';
 
 // Import all script main functions
 import { main as discoverMain } from './01-discover';
@@ -42,11 +43,7 @@ interface CliArgs {
 }
 
 function resolveDataDir(): string {
-  const envDir = process.env.JOB_HARVESTER_WORK_DIR;
-  if (envDir === undefined || envDir === '') {
-    throw new Error('JOB_HARVESTER_WORK_DIR is required. Set it in environment or via --env-file.');
-  }
-  return envDir;
+  return resolveRootWorkDirFromEnv();
 }
 
 /**
@@ -81,9 +78,13 @@ export function parseArgs(args: string[]): CliArgs {
     }
   }
 
-  // Validate: post phase requires run-dir
-  if (result.phase === 'post' && result.runDir === undefined) {
-    throw new Error('--phase post requires --run-dir');
+  // Validate: post/all phases require run-dir and strict run-* folder naming
+  if ((result.phase === 'post' || result.phase === 'all') && result.runDir === undefined) {
+    throw new Error(`--phase ${result.phase} requires --run-dir`);
+  }
+
+  if ((result.phase === 'post' || result.phase === 'all') && result.runDir !== undefined) {
+    assertValidRunDirName(result.runDir);
   }
 
   return result;
@@ -217,8 +218,6 @@ export async function writeRunManifest(runDir: string, phase: Phase): Promise<vo
  * Run a script
  */
 export async function runScript(scriptName: string, _runDir: string, dryRun: boolean): Promise<void> {
-  process.env.JOB_HARVESTER_WORK_DIR = _runDir;
-
   if (dryRun) {
     logger.info(`[DRY RUN] Would run ${scriptName}`);
     return;
@@ -229,25 +228,25 @@ export async function runScript(scriptName: string, _runDir: string, dryRun: boo
   try {
     switch (scriptName) {
       case '01-discover':
-        await discoverMain();
+        await discoverMain(_runDir);
         break;
       case '02-fetch-specs':
-        await fetchSpecsMain();
+        await fetchSpecsMain(_runDir);
         break;
       case '03-prefilter':
-        await prefilterMain();
+        await prefilterMain(_runDir);
         break;
       case '04-compile-results':
-        await compileResultsMain();
+        await compileResultsMain(_runDir);
         break;
       case '05-generate-pdfs':
-        await generatePdfsMain();
+        await generatePdfsMain(_runDir);
         break;
       case '06-summarize-run':
-        await summarizeRunMain();
+        await summarizeRunMain(_runDir);
         break;
       case '07-upload':
-        await uploadMain();
+        await uploadMain(_runDir);
         break;
       default:
         throw new Error(`Unknown script: ${scriptName}`);
@@ -265,7 +264,6 @@ export async function runScript(scriptName: string, _runDir: string, dryRun: boo
  */
 export async function runPrePhase(runDir: string, dryRun: boolean): Promise<void> {
   logger.info('=== Pre-AI Pipeline ===');
-  process.env.JOB_HARVESTER_WORK_DIR = runDir;
 
   await writeRunManifest(runDir, 'pre');
   await runScript('01-discover', runDir, dryRun);
@@ -300,7 +298,6 @@ export async function runPrePhase(runDir: string, dryRun: boolean): Promise<void
  */
 export async function runPostPhase(runDir: string, dryRun: boolean): Promise<void> {
   logger.info('=== Post-AI Pipeline ===');
-  process.env.JOB_HARVESTER_WORK_DIR = runDir;
 
   await validatePostPhase(runDir);
   await writeRunManifest(runDir, 'post');
@@ -327,10 +324,11 @@ export async function main(): Promise<void> {
       await runPrePhase(runDir, args.dryRun);
     } else if (args.phase === 'post') {
       runDir = args.runDir!;
+      await requireExistingRunDir(runDir);
       await runPostPhase(runDir, args.dryRun);
     } else if (args.phase === 'all') {
-      // For testing: requires existing run-dir with job-scores
-      runDir = args.runDir ?? await createRunDir();
+      runDir = args.runDir!;
+      await requireExistingRunDir(runDir);
       await validatePostPhase(runDir);
       await runPostPhase(runDir, args.dryRun);
     }

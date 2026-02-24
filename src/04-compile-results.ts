@@ -11,6 +11,7 @@ import type { FilterVerdict, JobScore, CompiledJob, CompileOutput, RejectionReas
 import { slugify } from './utils/slugify';
 import * as logger from './utils/logger';
 import { loadEnvFileIfProvided } from './utils/env-loader';
+import { resolveRequiredRunDirFromCli } from './utils/run-dir';
 
 // Score thresholds
 const SCORE_PASS_THRESHOLD = 7;
@@ -27,32 +28,24 @@ interface RejectionEntry {
   rejectedAt: string;
 }
 
-function resolveDataDir(): string {
-  const envDir = process.env.JOB_HARVESTER_WORK_DIR;
-  if (envDir === undefined || envDir === '') {
-    throw new Error('JOB_HARVESTER_WORK_DIR is required. Set it in environment or via --env-file.');
-  }
-  return envDir;
+function getPreFilterSurvivorsFile(runDir: string): string {
+  return path.join(runDir, 'pre-filter-survivors.json');
 }
 
-function getPreFilterSurvivorsFile(): string {
-  return path.join(resolveDataDir(), 'pre-filter-survivors.json');
+function getPreFilterRejectionsFile(runDir: string): string {
+  return path.join(runDir, 'pre-filter-rejections.json');
 }
 
-function getPreFilterRejectionsFile(): string {
-  return path.join(resolveDataDir(), 'pre-filter-rejections.json');
+function getScoresDir(runDir: string): string {
+  return path.join(runDir, 'job-scores');
 }
 
-function getScoresDir(): string {
-  return path.join(resolveDataDir(), 'job-scores');
+function getCompiledResultsFile(runDir: string): string {
+  return path.join(runDir, 'compile-results.json');
 }
 
-function getCompiledResultsFile(): string {
-  return path.join(resolveDataDir(), 'compile-results.json');
-}
-
-function getAllRejectionsFile(): string {
-  return path.join(resolveDataDir(), 'all-rejections.json');
+function getAllRejectionsFile(runDir: string): string {
+  return path.join(runDir, 'all-rejections.json');
 }
 
 /**
@@ -129,12 +122,12 @@ export async function readJobScore(filePath: string): Promise<JobScore | null> {
 /**
  * Compile results from all sources
  */
-export async function compileResults(): Promise<CompileOutput> {
+export async function compileResults(runDir: string): Promise<CompileOutput> {
   const timestamp = new Date().toISOString();
-  const preFilterSurvivorsFile = getPreFilterSurvivorsFile();
-  const preFilterRejectionsFile = getPreFilterRejectionsFile();
-  const scoresDir = getScoresDir();
-  const allRejectionsFile = getAllRejectionsFile();
+  const preFilterSurvivorsFile = getPreFilterSurvivorsFile(runDir);
+  const preFilterRejectionsFile = getPreFilterRejectionsFile(runDir);
+  const scoresDir = getScoresDir(runDir);
+  const allRejectionsFile = getAllRejectionsFile(runDir);
   
   // Read pre-filter survivors
   const survivorsContent = await fs.readFile(preFilterSurvivorsFile, 'utf-8');
@@ -267,13 +260,15 @@ export async function compileResults(): Promise<CompileOutput> {
 /**
  * Main entry point
  */
-export async function main(): Promise<void> {
-  await loadEnvFileIfProvided(process.argv.slice(2));
+export async function main(runDirArg?: string): Promise<void> {
+  const args = process.argv.slice(2);
+  await loadEnvFileIfProvided(args);
+  const runDir = runDirArg ?? await resolveRequiredRunDirFromCli(args);
   logger.info('Starting compile results...');
-  const compiledResultsFile = getCompiledResultsFile();
+  const compiledResultsFile = getCompiledResultsFile(runDir);
   
   try {
-    const result = await compileResults();
+    const result = await compileResults(runDir);
     
     // Write compile-results.json
     await fs.writeFile(
