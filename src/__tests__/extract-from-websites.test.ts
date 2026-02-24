@@ -1,6 +1,17 @@
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import type { DiscoveredJob } from '../types';
-import { mergeWebsiteCandidatesIntoDiscovered } from '../extract-from-websites';
+import { mergeWebsiteCandidatesIntoDiscovered, runWebsiteExtraction } from '../extract-from-websites';
 import type { ExtractedJobCandidate } from '../ai/validators';
+import { extractJobCandidates } from '../ai/extract-job-candidates';
+
+jest.mock('fs/promises');
+jest.mock('../ai/extract-job-candidates', () => ({
+  extractJobCandidates: jest.fn(),
+}));
+
+const mockedFs = fs as jest.Mocked<typeof fs>;
+const mockedExtractJobCandidates = extractJobCandidates as jest.MockedFunction<typeof extractJobCandidates>;
 
 describe('mergeWebsiteCandidatesIntoDiscovered', () => {
   const discoveredAt = '2026-02-24T12:00:00.000Z';
@@ -60,3 +71,173 @@ describe('mergeWebsiteCandidatesIntoDiscovered', () => {
   });
 });
 
+describe('runWebsiteExtraction', () => {
+  const runDir = '/tmp/run-websites';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockedFs.writeFile.mockResolvedValue(undefined);
+    (globalThis as unknown as { fetch: jest.Mock }).fetch = jest.fn();
+  });
+
+  it('processes only brave-discovered sources for fetching and extraction', async () => {
+    mockedFs.readFile.mockResolvedValueOnce(
+      JSON.stringify({
+        jobs: [
+          {
+            id: 'b1',
+            company: 'Acme',
+            title: 'Head of Engineering',
+            url: 'https://acme.example/jobs/1',
+            source: 'brave',
+            discoveredAt: '2026-02-24T00:00:00.000Z',
+          },
+          {
+            id: 'g1',
+            company: 'Inbox Corp',
+            title: 'CTO',
+            url: 'https://inbox.example/jobs/1',
+            source: 'gmail',
+            discoveredAt: '2026-02-24T00:00:00.000Z',
+          },
+          {
+            id: 'be1',
+            company: 'Derived Co',
+            title: 'VP Engineering',
+            url: 'https://derived.example/jobs/1',
+            source: 'brave-extracted',
+            discoveredAt: '2026-02-24T00:00:00.000Z',
+          },
+        ],
+      })
+    );
+
+    (globalThis as unknown as { fetch: jest.Mock }).fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => '<html><body>Role text</body></html>',
+    });
+    mockedExtractJobCandidates.mockResolvedValue([]);
+
+    await runWebsiteExtraction(runDir);
+
+    expect((globalThis as unknown as { fetch: jest.Mock }).fetch).toHaveBeenCalledTimes(1);
+    expect((globalThis as unknown as { fetch: jest.Mock }).fetch.mock.calls[0]?.[0]).toBe(
+      'https://acme.example/jobs/1'
+    );
+    expect(mockedExtractJobCandidates).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls extractor with webpage context and source hint', async () => {
+    mockedFs.readFile.mockResolvedValueOnce(
+      JSON.stringify({
+        jobs: [
+          {
+            id: 'b1',
+            company: 'Acme',
+            title: 'Head of Engineering',
+            url: 'https://acme.example/jobs/1',
+            source: 'brave',
+            discoveredAt: '2026-02-24T00:00:00.000Z',
+          },
+        ],
+      })
+    );
+
+    (globalThis as unknown as { fetch: jest.Mock }).fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => '<html><body>Hello <b>Role</b></body></html>',
+    });
+    mockedExtractJobCandidates.mockResolvedValue([]);
+
+    await runWebsiteExtraction(runDir);
+
+    expect(mockedExtractJobCandidates).toHaveBeenCalledWith(
+      'Hello Role',
+      expect.objectContaining({
+        type: 'webpage',
+        hint: expect.stringContaining('Source URL: https://acme.example/jobs/1'),
+      })
+    );
+  });
+
+  it('writes step log with expected shape and counters', async () => {
+    mockedFs.readFile.mockResolvedValueOnce(
+      JSON.stringify({
+        jobs: [
+          {
+            id: 'b1',
+            company: 'Acme',
+            title: 'Head of Engineering',
+            url: 'https://acme.example/jobs/1',
+            source: 'brave',
+            discoveredAt: '2026-02-24T00:00:00.000Z',
+          },
+        ],
+      })
+    );
+
+    (globalThis as unknown as { fetch: jest.Mock }).fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => '<html><body>Role text</body></html>',
+    });
+    mockedExtractJobCandidates.mockResolvedValue([
+      {
+        company: 'Beta',
+        title: 'CTO',
+        url: 'https://beta.example/jobs/2',
+      },
+    ]);
+
+    await runWebsiteExtraction(runDir);
+
+    expect(mockedFs.writeFile).toHaveBeenCalledTimes(2);
+    const logCall = mockedFs.writeFile.mock.calls.find(call =>
+      String(call[0]).endsWith('extract-from-websites-log.json')
+    );
+
+    expect(logCall).toBeDefined();
+    const payload = JSON.parse(logCall?.[1] as string) as Record<string, unknown>;
+    expect(payload.runDir).toBe(runDir);
+    expect(payload.discoveredFile).toBe(path.join(runDir, 'discovered-jobs.json'));
+    expect(payload.pagesProcessed).toBe(1);
+    expect(payload.candidatesExtracted).toBe(1);
+    expect(payload.appended).toBe(1);
+    expect(payload.duplicateUrls).toBe(0);
+    expect(payload.invalidUrls).toBe(0);
+    expect(typeof payload.timestamp).toBe('string');
+  });
+
+  it('handles fetch failures gracefully and still writes outputs', async () => {
+    mockedFs.readFile.mockResolvedValueOnce(
+      JSON.stringify({
+        jobs: [
+          {
+            id: 'b1',
+            company: 'Acme',
+            title: 'Head of Engineering',
+            url: 'https://acme.example/jobs/1',
+            source: 'brave',
+            discoveredAt: '2026-02-24T00:00:00.000Z',
+          },
+        ],
+      })
+    );
+
+    (globalThis as unknown as { fetch: jest.Mock }).fetch.mockRejectedValue(new Error('network down'));
+
+    const result = await runWebsiteExtraction(runDir);
+
+    expect(result).toEqual({
+      pagesProcessed: 0,
+      candidatesExtracted: 0,
+      appended: 0,
+      duplicateUrls: 0,
+      invalidUrls: 0,
+    });
+    expect(mockedExtractJobCandidates).not.toHaveBeenCalled();
+    expect(mockedFs.writeFile).toHaveBeenCalledTimes(2);
+  });
+});
