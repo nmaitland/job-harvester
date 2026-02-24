@@ -108,6 +108,24 @@ function getArchiveFolderName(runDir: string): string {
   return `archive-${base}`;
 }
 
+function getMimeTypeForFile(fileName: string): string {
+  const ext = path.extname(fileName).toLowerCase();
+  switch (ext) {
+    case '.csv':
+      return 'text/csv';
+    case '.md':
+      return 'text/markdown';
+    case '.txt':
+      return 'text/plain';
+    case '.json':
+      return 'application/json';
+    case '.pdf':
+      return 'application/pdf';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
 /**
  * Upload specs to OneDrive
  */
@@ -324,6 +342,8 @@ export async function uploadPdfsToGoogleDrive(
           continue;
         }
 
+        const summaryMimeType = getMimeTypeForFile(summaryFile.name);
+
         await withTimeout(
           retry(
             () => drive.files.create({
@@ -332,7 +352,7 @@ export async function uploadPdfsToGoogleDrive(
                 parents: [archiveFolderId],
               },
               media: {
-                mimeType: 'text/plain',
+                mimeType: summaryMimeType,
                 body: createReadStream(summaryFile.path),
               },
               fields: 'id',
