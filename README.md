@@ -4,14 +4,15 @@ A TypeScript pipeline for automated job search. Discovers jobs from multiple sou
 
 ## Architecture
 
-The pipeline consists of 6 standalone scripts that can be run independently or orchestrated together:
+The pipeline consists of 7 standalone scripts that can be run independently or orchestrated together:
 
 1. **01-discover.ts** - Discovers jobs from Gmail, LinkedIn, and Brave Search
 2. **02-fetch-specs.ts** - Fetches full job specifications using Brightdata API and Playwright
 3. **03-prefilter.ts** - Applies deterministic filters (fetch_failed, already_applied, already_sent, junior_role)
 4. **04-compile-results.ts** - Merges AI scores with pre-filter results, applies thresholds
 5. **05-generate-pdfs.ts** - Generates PDFs from job specifications using Playwright
-6. **06-upload.ts** - Uploads PDFs to OneDrive and Google Drive
+6. **07-summarize-run.ts** - Builds human-readable run summary files (AI narrative with deterministic fallback)
+7. **06-upload.ts** - Uploads PDFs and summary artifacts to OneDrive and Google Drive archive folders
 
 AI helper scripts for manual AI handoff steps:
 
@@ -30,6 +31,7 @@ AI helper scripts for manual AI handoff steps:
 | `compile-results.json` | 04-compile-results.ts | 05-generate-pdfs.ts |
 | `all-rejections.json` | 04-compile-results.ts | - |
 | `pdfs/*.pdf` | 05-generate-pdfs.ts | 06-upload.ts |
+| `run-summary/*.txt` | 07-summarize-run.ts | 06-upload.ts |
 
 ## Installation
 
@@ -84,6 +86,8 @@ Notes:
 - OpenRouter scripts require [`OPENROUTER_API_KEY`](README.md) and [`OPENROUTER_MODEL`](README.md).
 - Parallel batch size for AI calls is controlled by [`OPENROUTER_STEP2_BATCH_CONCURRENCY`](README.md) and [`OPENROUTER_STEP4_BATCH_CONCURRENCY`](README.md).
 - AI Step 2 scoring script fails fast if [`jobs/cv-keywords.md`](jobs/cv-keywords.md) is missing under [`JOB_HARVESTER_MANAGEMENT_DATA_DIR`](README.md).
+- Run summary output files are written to `RUN_DIR/run-summary/summary-log.txt` and `RUN_DIR/run-summary/review-jobs.txt`.
+- Cloud uploads are grouped by run using `archive-<run-timestamp>` folder names in both OneDrive and Google Drive.
 
 ## Usage
 
@@ -156,6 +160,33 @@ Cloud upload structure per run:
 - OneDrive path: `JobSpecs/archive-<run-timestamp>/...`
 - Google Drive: created subfolder `archive-<run-timestamp>` under `GOOGLE_DRIVE_FOLDER_ID`
 
+### Run summary process (`07-summarize-run.ts`)
+
+The summary step reads run artifacts and produces two human-readable text files:
+
+- `run-summary/summary-log.txt` (brief run log)
+- `run-summary/review-jobs.txt` (detailed list of jobs worth reviewing: score, company, title, link)
+
+Input sources include:
+
+- `discovered-jobs.json`
+- `fetched-specs.json`
+- `pre-filter-survivors.json`
+- `pre-filter-rejections.json`
+- `compile-results.json`
+- `pdfs/pdf-results.json`
+
+Narrative generation behavior:
+
+- If OpenRouter is configured, the step requests concise natural-language narrative.
+- If OpenRouter is unavailable or response parsing fails, deterministic text templates are used.
+
+Manual run example:
+
+```bash
+npm run dev:summarize -- --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env.dev
+```
+
 ### Run Full Pipeline
 
 ```bash
@@ -200,6 +231,7 @@ job-harvester/
 │   ├── 03-prefilter.ts         # Pre-filter script
 │   ├── 04-compile-results.ts   # Compile results
 │   ├── 05-generate-pdfs.ts     # PDF generation
+│   ├── 07-summarize-run.ts     # Run summary generation
 │   ├── 06-upload.ts            # Upload script
 │   ├── run-job-search.ts       # Orchestrator
 │   ├── types.ts                # Shared TypeScript types
