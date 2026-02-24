@@ -4,12 +4,14 @@ import type { DiscoveredJob } from './types';
 import { slugify } from './utils/slugify';
 import * as logger from './utils/logger';
 import { loadEnvFileIfProvided } from './utils/env-loader';
+import { MANAGEMENT_DATA_DIR } from './config';
 import {
   type ExtractedJobCandidate,
   normalizeHttpUrl,
 } from './ai/validators';
 import { extractJobCandidates } from './ai/extract-job-candidates';
 import { resolveRequiredRunDirFromCli } from './utils/run-dir';
+import { loadProcessedUrlRegistry } from './utils/processed-urls';
 
 interface GmailEmail {
   id: string;
@@ -27,6 +29,7 @@ interface MergeResult {
   jobs: DiscoveredJob[];
   appended: number;
   duplicateUrls: number;
+  alreadyProcessed: number;
   invalidUrls: number;
 }
 
@@ -48,6 +51,14 @@ function getFallbackGmailIndexFile(runDir: string): string {
 
 function getDiscoveredJobsFile(runDir: string): string {
   return path.join(runDir, 'discovered-jobs.json');
+}
+
+function getManagementDataDir(): string {
+  const envDir = process.env.JOB_HARVESTER_MANAGEMENT_DATA_DIR;
+  if (envDir !== undefined && envDir !== '') {
+    return envDir;
+  }
+  return MANAGEMENT_DATA_DIR;
 }
 
 function getStepLogFile(runDir: string): string {
@@ -255,7 +266,8 @@ function buildJobId(basePrefix: string, existingIds: Set<string>): string {
 export function mergeCandidatesIntoDiscovered(
   existingJobs: DiscoveredJob[],
   candidates: ExtractedJobCandidate[],
-  discoveredAt: string
+  discoveredAt: string,
+  globalKnownUrls: Set<string> = new Set<string>()
 ): MergeResult {
   const mergedJobs = [...existingJobs];
   const existingUrls = new Set<string>();
@@ -271,6 +283,7 @@ export function mergeCandidatesIntoDiscovered(
 
   let appended = 0;
   let duplicateUrls = 0;
+  let alreadyProcessed = 0;
   let invalidUrls = 0;
   const day = discoveredAt.slice(0, 10);
 
@@ -283,6 +296,11 @@ export function mergeCandidatesIntoDiscovered(
 
     if (existingUrls.has(normalizedUrl)) {
       duplicateUrls++;
+      continue;
+    }
+
+    if (globalKnownUrls.has(normalizedUrl)) {
+      alreadyProcessed++;
       continue;
     }
 
@@ -309,6 +327,7 @@ export function mergeCandidatesIntoDiscovered(
     jobs: mergedJobs,
     appended,
     duplicateUrls,
+    alreadyProcessed,
     invalidUrls,
   };
 }
@@ -319,6 +338,7 @@ interface EmailExtractionResult {
   candidatesExtracted: number;
   appended: number;
   duplicateUrls: number;
+  alreadyProcessed: number;
   invalidUrls: number;
 }
 
@@ -350,6 +370,7 @@ function chunkArray<T>(items: T[], batchSize: number): T[][] {
 }
 
 export async function runEmailExtraction(runDir: string): Promise<EmailExtractionResult> {
+  const processedUrlSet = await loadProcessedUrlRegistry(getManagementDataDir());
   const { emails, indexFile } = await loadGmailEmails(runDir);
   const discoveredFile = getDiscoveredJobsFile(runDir);
   const batchConcurrency = getEmailBatchConcurrency();
@@ -388,7 +409,7 @@ export async function runEmailExtraction(runDir: string): Promise<EmailExtractio
 
   const discovered = await readDiscoveredDocument(discoveredFile);
   const discoveredAt = new Date().toISOString();
-  const merged = mergeCandidatesIntoDiscovered(discovered.jobs, allCandidates, discoveredAt);
+  const merged = mergeCandidatesIntoDiscovered(discovered.jobs, allCandidates, discoveredAt, processedUrlSet);
 
   const nextDocument: Record<string, unknown> = {
     ...discovered.document,
@@ -403,6 +424,7 @@ export async function runEmailExtraction(runDir: string): Promise<EmailExtractio
     candidatesExtracted: allCandidates.length,
     appended: merged.appended,
     duplicateUrls: merged.duplicateUrls,
+    alreadyProcessed: merged.alreadyProcessed,
     invalidUrls: merged.invalidUrls,
   };
 
@@ -437,6 +459,7 @@ export async function main(runDirArg?: string): Promise<void> {
   logger.info(`  Candidates extracted: ${result.candidatesExtracted}`);
   logger.info(`  Appended: ${result.appended}`);
   logger.info(`  Duplicates skipped: ${result.duplicateUrls}`);
+  logger.info(`  Already processed skipped: ${result.alreadyProcessed}`);
   logger.info(`  Invalid URLs skipped: ${result.invalidUrls}`);
 }
 

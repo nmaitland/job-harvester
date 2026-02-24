@@ -3,7 +3,7 @@
  */
 
 import * as fs from 'fs/promises';
-import { uploadSpecsToOneDrive, uploadPdfsToGoogleDrive } from '../upload';
+import { recordProcessedUrlsForRun, uploadSpecsToOneDrive, uploadPdfsToGoogleDrive } from '../upload';
 import type { PDFResult } from '../types';
 
 // Mock fs/promises
@@ -42,6 +42,19 @@ jest.mock('googleapis', () => ({
       },
     })),
   },
+}));
+
+jest.mock('../utils/processed-urls', () => ({
+  appendUrlsToRegistry: jest.fn().mockResolvedValue(undefined),
+  buildProcessedUrlEntries: jest.fn().mockReturnValue([
+    {
+      url: 'https://example.com/job1',
+      normalizedUrl: 'https://example.com/job1',
+      recordedAt: '2026-02-24T00:00:00.000Z',
+      runTimestamp: '2026-02-24-00-00-00',
+      source: 'brave',
+    },
+  ]),
 }));
 
 const mockedFs = fs as jest.Mocked<typeof fs>;
@@ -117,5 +130,35 @@ describe('uploadPdfsToGoogleDrive', () => {
     // Empty paths are filtered out before attempting upload
     // Note: The actual upload may fail due to mocking, but we're testing the filter logic
     expect(result.errors.length).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('recordProcessedUrlsForRun', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('records discovered jobs into processed URL registry', async () => {
+    mockedFs.readFile.mockResolvedValueOnce(
+      JSON.stringify({
+        jobs: [
+          {
+            id: '1',
+            company: 'Acme',
+            title: 'CTO',
+            url: 'https://acme.example/jobs/1',
+            source: 'brave',
+            discoveredAt: '2026-02-24T00:00:00.000Z',
+          },
+        ],
+      })
+    );
+
+    const count = await recordProcessedUrlsForRun(
+      '/data/run-2026-02-24-00-00-00',
+      '/data/run-2026-02-24-00-00-00/discovered-jobs.json'
+    );
+
+    expect(count).toBe(1);
   });
 });

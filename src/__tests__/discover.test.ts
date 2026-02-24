@@ -136,6 +136,37 @@ describe('discoverViaBrave', () => {
     expect(result).toHaveLength(1);
     expect(result[0]?.title).toBe('Valid Job');
   });
+
+  it('should skip URLs that already exist in processed registry', async () => {
+    const mockResponse = {
+      web: {
+        results: [
+          {
+            title: 'Role at KeepCo',
+            url: 'https://keep.example/jobs/1',
+            description: 'Keep',
+          },
+          {
+            title: 'Role at SkipCo',
+            url: 'https://skip.example/jobs/2?utm=abc',
+            description: 'Skip',
+          },
+        ],
+      },
+    };
+
+    (fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => mockResponse,
+    });
+
+    const knownUrls = new Set<string>(['https://skip.example/jobs/2']);
+    const result = await discoverViaBrave('api-key', ['query'], knownUrls);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.url).toBe('https://keep.example/jobs/1');
+  });
 });
 
 describe('checkLinkedInLoginState', () => {
