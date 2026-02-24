@@ -206,6 +206,7 @@ describe('writeRunManifest', () => {
     expect(manifest.files['compile-results.json']).toBeDefined();
     expect(manifest.files['all-rejections.json']).toBeDefined();
     expect(manifest.files['pdfs/*.pdf']).toBeDefined();
+    expect(manifest.files['run-summary/*.txt']).toBeDefined();
     expect(manifest.files['upload-results.json']).toBeDefined();
   });
 
@@ -224,6 +225,7 @@ describe('writeRunManifest', () => {
     expect(manifest.files['job-scores/*.json'].owner).toBe('AI');
     expect(manifest.files['compile-results.json'].owner).toBe('04-compile-results.ts');
     expect(manifest.files['pdfs/*.pdf'].owner).toBe('05-generate-pdfs.ts');
+    expect(manifest.files['run-summary/*.txt'].owner).toBe('07-summarize-run.ts');
     expect(manifest.files['upload-results.json'].owner).toBe('06-upload.ts');
   });
 

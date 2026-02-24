@@ -104,6 +104,7 @@ npm run fetch-specs     # Fetch job specifications
 npm run prefilter       # Run pre-filter
 npm run compile         # Compile results
 npm run generate-pdfs   # Generate PDFs
+npm run summarize       # Build human-readable run summary files
 npm run upload          # Upload to cloud storage
 npm run ai:step2        # AI Step 1: extract jobs from Gmail index
 npm run ai:step4        # AI Step 2: score pre-filter survivors
@@ -117,6 +118,7 @@ npm run dev:fetch-specs -- --env-file .env.dev
 npm run dev:prefilter -- --env-file .env.dev
 npm run dev:compile -- --env-file .env.dev
 npm run dev:generate-pdfs -- --env-file .env.dev
+npm run dev:summarize -- --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env.dev
 npm run dev:upload -- --env-file .env.dev
 npm run dev:ai-step2 -- --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env.dev
 npm run dev:ai-step4 -- --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env.dev
@@ -141,6 +143,18 @@ npm run dev:ai-step4 -- --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env
 # 5) Complete post phase
 npm run dev:run -- --phase post --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env.dev
 ```
+
+Post phase now runs in this order:
+
+1. compile results
+2. generate PDFs (filename format: `YYYY-MM-DD-S{score}-{company}-advert.pdf`)
+3. summarize run into `run-summary/summary-log.txt` and `run-summary/review-jobs.txt`
+4. upload PDFs + summary artifacts to cloud archive folders
+
+Cloud upload structure per run:
+
+- OneDrive path: `JobSpecs/archive-<run-timestamp>/...`
+- Google Drive: created subfolder `archive-<run-timestamp>` under `GOOGLE_DRIVE_FOLDER_ID`
 
 ### Run Full Pipeline
 
