@@ -165,7 +165,8 @@ export interface RunSummaryOutput {
   timestamp: string;
   runDir: string;
   summaryLogFile: string;
-  reviewJobsFile: string;
+  reviewJobsMdFile: string;
+  reviewJobsCsvFile: string;
   metadataFile: string;
   aiUsed: boolean;
 }

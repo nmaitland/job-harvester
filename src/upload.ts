@@ -353,7 +353,8 @@ export async function main(runDirArg?: string): Promise<void> {
   const timestamp = new Date().toISOString();
   const summaryFiles = [
     { name: 'summary-log.txt', path: path.join(runSummaryDir, 'summary-log.txt') },
-    { name: 'review-jobs.txt', path: path.join(runSummaryDir, 'review-jobs.txt') },
+    { name: 'review-jobs.md', path: path.join(runSummaryDir, 'review-jobs.md') },
+    { name: 'review-jobs.csv', path: path.join(runSummaryDir, 'review-jobs.csv') },
   ];
 
   const log: UploadLog = {
