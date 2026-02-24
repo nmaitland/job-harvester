@@ -13,14 +13,16 @@ import { assertValidRunDirName, requireExistingRunDir, resolveRootWorkDirFromEnv
 
 // Import all script main functions
 import { main as discoverMain } from './01-discover';
-import { main as fetchSpecsMain } from './02-fetch-specs';
-import { main as prefilterMain } from './03-prefilter';
-import { main as compileResultsMain } from './04-compile-results';
-import { main as generatePdfsMain } from './05-generate-pdfs';
-import { main as summarizeRunMain } from './06-summarize-run';
-import { main as uploadMain } from './07-upload';
+import { main as extractFromEmailsMain } from './02-extract-from-emails';
+import { main as fetchSpecsMain } from './03-fetch-specs';
+import { main as prefilterMain } from './04-prefilter';
+import { main as scoreSurvivorsMain } from './05-score-survivors';
+import { main as compileResultsMain } from './06-compile-results';
+import { main as generatePdfsMain } from './07-generate-pdfs';
+import { main as summarizeRunMain } from './08-summarize-run';
+import { main as uploadMain } from './09-upload';
 
-type Phase = 'pre' | 'post' | 'all';
+type Phase = 'all' | 'discovery' | 'email-processing' | 'fetch-and-filter' | 'scoring' | 'output';
 
 interface RunManifest {
   runDir: string;
@@ -51,7 +53,7 @@ function resolveDataDir(): string {
  */
 export function parseArgs(args: string[]): CliArgs {
   const result: CliArgs = {
-    phase: 'pre',
+    phase: 'all',
     runDir: undefined,
     dryRun: false,
     envFile: undefined,
@@ -62,8 +64,8 @@ export function parseArgs(args: string[]): CliArgs {
 
     if (arg === '--phase' && i + 1 < args.length) {
       const phase = args[i + 1] as Phase;
-      if (!['pre', 'post', 'all'].includes(phase)) {
-        throw new Error(`Invalid phase: ${phase}. Must be 'pre', 'post', or 'all'`);
+      if (!['all', 'discovery', 'email-processing', 'fetch-and-filter', 'scoring', 'output'].includes(phase)) {
+        throw new Error('Invalid phase: ' + phase + ". Must be 'all', 'discovery', 'email-processing', 'fetch-and-filter', 'scoring', or 'output'");
       }
       result.phase = phase;
       i++;
@@ -78,12 +80,12 @@ export function parseArgs(args: string[]): CliArgs {
     }
   }
 
-  // Validate: post/all phases require run-dir and strict run-* folder naming
-  if ((result.phase === 'post' || result.phase === 'all') && result.runDir === undefined) {
+  // Validate: partial phases require --run-dir. --phase all can create a new run-dir.
+  if (result.phase !== 'all' && result.runDir === undefined) {
     throw new Error(`--phase ${result.phase} requires --run-dir`);
   }
 
-  if ((result.phase === 'post' || result.phase === 'all') && result.runDir !== undefined) {
+  if (result.runDir !== undefined) {
     assertValidRunDirName(result.runDir);
   }
 
@@ -104,19 +106,24 @@ export async function createRunDir(): Promise<string> {
   return runDir;
 }
 
-/**
- * Validate post phase prerequisites
- */
-export async function validatePostPhase(runDir: string): Promise<void> {
-  // Check pre-filter-survivors.json exists
-  const survivorsFile = path.join(runDir, 'pre-filter-survivors.json');
+async function ensureFileExists(filePath: string, message: string): Promise<void> {
   try {
-    await fs.access(survivorsFile);
+    await fs.access(filePath);
   } catch {
-    throw new Error(`Pre-filter survivors file not found: ${survivorsFile}. Run --phase pre first.`);
+    throw new Error(message);
   }
+}
 
-  // Check job-scores directory exists and has files
+/**
+ * Validate output phase prerequisites
+ */
+export async function validateOutputPhase(runDir: string): Promise<void> {
+  const survivorsFile = path.join(runDir, 'pre-filter-survivors.json');
+  await ensureFileExists(
+    survivorsFile,
+    `Pre-filter survivors file not found: ${survivorsFile}. Run --phase fetch-and-filter first.`
+  );
+
   const scoresDir = path.join(runDir, 'job-scores');
   try {
     const files = await fs.readdir(scoresDir);
@@ -128,7 +135,7 @@ export async function validatePostPhase(runDir: string): Promise<void> {
     if (error instanceof Error && error.message.includes('No job score files found')) {
       throw error;
     }
-    throw new Error(`Job scores directory not found: ${scoresDir}. AI scoring step required.`);
+    throw new Error(`Job scores directory not found: ${scoresDir}. Run --phase scoring first.`);
   }
 }
 
@@ -149,55 +156,55 @@ export async function writeRunManifest(runDir: string, phase: Phase): Promise<vo
         description: 'Jobs discovered from Brave, LinkedIn, Gmail',
       },
       'fetched-specs.json': {
-        owner: '02-fetch-specs.ts',
+        owner: '03-fetch-specs.ts',
         aiMayRead: true,
         aiMayWrite: false,
         description: 'Full job specifications fetched from sources',
       },
       'pre-filter-survivors.json': {
-        owner: '03-prefilter.ts',
+        owner: '04-prefilter.ts',
         aiMayRead: true,
         aiMayWrite: false,
         description: 'Jobs that passed pre-filter (for AI scoring)',
       },
       'pre-filter-rejections.json': {
-        owner: '03-prefilter.ts',
+        owner: '04-prefilter.ts',
         aiMayRead: false,
         aiMayWrite: false,
         description: 'Jobs rejected by pre-filter',
       },
       'job-scores/*.json': {
-        owner: 'AI',
+        owner: '05-score-survivors.ts',
         aiMayRead: false,
         aiMayWrite: true,
         description: 'AI-generated job scores',
       },
       'compile-results.json': {
-        owner: '04-compile-results.ts',
+        owner: '06-compile-results.ts',
         aiMayRead: true,
         aiMayWrite: false,
         description: 'Final compiled results with PASS/REVIEW/REJECT',
       },
       'all-rejections.json': {
-        owner: '04-compile-results.ts',
+        owner: '06-compile-results.ts',
         aiMayRead: true,
         aiMayWrite: false,
         description: 'All rejected jobs (pre-filter + AI)',
       },
       'pdfs/*.pdf': {
-        owner: '05-generate-pdfs.ts',
+        owner: '07-generate-pdfs.ts',
         aiMayRead: true,
         aiMayWrite: false,
         description: 'Generated PDFs for PASS/REVIEW jobs',
       },
       'run-summary/*.txt': {
-        owner: '06-summarize-run.ts',
+        owner: '08-summarize-run.ts',
         aiMayRead: true,
         aiMayWrite: false,
         description: 'Human-readable run summary and review list',
       },
       'upload-results.json': {
-        owner: '07-upload.ts',
+        owner: '09-upload.ts',
         aiMayRead: true,
         aiMayWrite: false,
         description: 'Upload results with cloud URLs',
@@ -230,22 +237,28 @@ export async function runScript(scriptName: string, _runDir: string, dryRun: boo
       case '01-discover':
         await discoverMain(_runDir);
         break;
-      case '02-fetch-specs':
+      case '02-extract-from-emails':
+        await extractFromEmailsMain(_runDir);
+        break;
+      case '03-fetch-specs':
         await fetchSpecsMain(_runDir);
         break;
-      case '03-prefilter':
+      case '04-prefilter':
         await prefilterMain(_runDir);
         break;
-      case '04-compile-results':
+      case '05-score-survivors':
+        await scoreSurvivorsMain(_runDir);
+        break;
+      case '06-compile-results':
         await compileResultsMain(_runDir);
         break;
-      case '05-generate-pdfs':
+      case '07-generate-pdfs':
         await generatePdfsMain(_runDir);
         break;
-      case '06-summarize-run':
+      case '08-summarize-run':
         await summarizeRunMain(_runDir);
         break;
-      case '07-upload':
+      case '09-upload':
         await uploadMain(_runDir);
         break;
       default:
@@ -260,17 +273,68 @@ export async function runScript(scriptName: string, _runDir: string, dryRun: boo
 }
 
 /**
- * Run pre phase
+ * Run discovery phase
  */
-export async function runPrePhase(runDir: string, dryRun: boolean): Promise<void> {
-  logger.info('=== Pre-AI Pipeline ===');
+export async function runDiscoveryPhase(runDir: string, dryRun: boolean): Promise<void> {
+  logger.info('=== Phase: Discovery ===');
 
-  await writeRunManifest(runDir, 'pre');
   await runScript('01-discover', runDir, dryRun);
-  await runScript('02-fetch-specs', runDir, dryRun);
-  await runScript('03-prefilter', runDir, dryRun);
+}
 
-  // Count survivors
+/**
+ * Run email-processing phase
+ */
+export async function runEmailProcessingPhase(runDir: string, dryRun: boolean): Promise<void> {
+  logger.info('=== Phase: Email Processing ===');
+
+  await runScript('02-extract-from-emails', runDir, dryRun);
+}
+
+/**
+ * Run fetch-and-filter phase
+ */
+export async function runFetchAndFilterPhase(runDir: string, dryRun: boolean): Promise<void> {
+  logger.info('=== Phase: Fetch and Filter ===');
+
+  await runScript('03-fetch-specs', runDir, dryRun);
+  await runScript('04-prefilter', runDir, dryRun);
+}
+
+/**
+ * Run scoring phase
+ */
+export async function runScoringPhase(runDir: string, dryRun: boolean): Promise<void> {
+  logger.info('=== Phase: Scoring ===');
+
+  await runScript('05-score-survivors', runDir, dryRun);
+}
+
+/**
+ * Run output phase
+ */
+export async function runOutputPhase(runDir: string, dryRun: boolean): Promise<void> {
+  logger.info('=== Phase: Output ===');
+
+  await validateOutputPhase(runDir);
+  await runScript('06-compile-results', runDir, dryRun);
+  await runScript('07-generate-pdfs', runDir, dryRun);
+  await runScript('08-summarize-run', runDir, dryRun);
+  await runScript('09-upload', runDir, dryRun);
+}
+
+/**
+ * Run all phases
+ */
+export async function runAllPhases(runDir: string, dryRun: boolean): Promise<void> {
+  logger.info('=== Fully Automated Pipeline ===');
+
+  await writeRunManifest(runDir, 'all');
+  await runDiscoveryPhase(runDir, dryRun);
+  await runEmailProcessingPhase(runDir, dryRun);
+  await runFetchAndFilterPhase(runDir, dryRun);
+  await runScoringPhase(runDir, dryRun);
+  await runOutputPhase(runDir, dryRun);
+
   let survivorCount = 0;
   if (!dryRun) {
     try {
@@ -283,30 +347,9 @@ export async function runPrePhase(runDir: string, dryRun: boolean): Promise<void
     }
   }
 
-  logger.success('Pre-AI pipeline complete');
+  logger.success('Pipeline complete');
   logger.info(`Run directory: ${runDir}`);
-  logger.info(`Survivors: ${survivorCount} jobs ready for AI scoring`);
-  logger.info('');
-  logger.info('Next steps:');
-  logger.info('  1. AI Step 1: Read gmail/index.json, extract jobs → append to discovered-jobs.json');
-  logger.info('  2. AI Step 2: Read pre-filter-survivors.json, score each → write job-scores/*.json');
-  logger.info(`  3. Run: npx ts-node src/run-job-search.ts --phase post --run-dir ${runDir}`);
-}
-
-/**
- * Run post phase
- */
-export async function runPostPhase(runDir: string, dryRun: boolean): Promise<void> {
-  logger.info('=== Post-AI Pipeline ===');
-
-  await validatePostPhase(runDir);
-  await writeRunManifest(runDir, 'post');
-  await runScript('04-compile-results', runDir, dryRun);
-  await runScript('05-generate-pdfs', runDir, dryRun);
-  await runScript('06-summarize-run', runDir, dryRun);
-  await runScript('07-upload', runDir, dryRun);
-
-  logger.success('Post-AI pipeline complete');
+  logger.info(`Survivors processed: ${survivorCount}`);
 }
 
 /**
@@ -319,18 +362,30 @@ export async function main(): Promise<void> {
 
     let runDir: string;
 
-    if (args.phase === 'pre') {
+    if (args.runDir !== undefined) {
+      runDir = args.runDir;
+      await requireExistingRunDir(runDir);
+    } else {
       runDir = await createRunDir();
-      await runPrePhase(runDir, args.dryRun);
-    } else if (args.phase === 'post') {
-      runDir = args.runDir!;
-      await requireExistingRunDir(runDir);
-      await runPostPhase(runDir, args.dryRun);
-    } else if (args.phase === 'all') {
-      runDir = args.runDir!;
-      await requireExistingRunDir(runDir);
-      await validatePostPhase(runDir);
-      await runPostPhase(runDir, args.dryRun);
+    }
+
+    if (args.phase === 'all') {
+      await runAllPhases(runDir, args.dryRun);
+    } else if (args.phase === 'discovery') {
+      await writeRunManifest(runDir, args.phase);
+      await runDiscoveryPhase(runDir, args.dryRun);
+    } else if (args.phase === 'email-processing') {
+      await writeRunManifest(runDir, args.phase);
+      await runEmailProcessingPhase(runDir, args.dryRun);
+    } else if (args.phase === 'fetch-and-filter') {
+      await writeRunManifest(runDir, args.phase);
+      await runFetchAndFilterPhase(runDir, args.dryRun);
+    } else if (args.phase === 'scoring') {
+      await writeRunManifest(runDir, args.phase);
+      await runScoringPhase(runDir, args.dryRun);
+    } else if (args.phase === 'output') {
+      await writeRunManifest(runDir, args.phase);
+      await runOutputPhase(runDir, args.dryRun);
     }
   } catch (error) {
     logger.error(`Pipeline failed: ${error instanceof Error ? error.message : String(error)}`);

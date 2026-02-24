@@ -1,16 +1,16 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import type { JobSpec } from '../types';
-import * as logger from '../utils/logger';
-import { slugify } from '../utils/slugify';
-import { loadEnvFileIfProvided } from '../utils/env-loader';
-import { MANAGEMENT_DATA_DIR } from '../config';
-import { requestOpenRouterChat } from './openrouter-client';
+import type { JobSpec } from './types';
+import * as logger from './utils/logger';
+import { slugify } from './utils/slugify';
+import { loadEnvFileIfProvided } from './utils/env-loader';
+import { MANAGEMENT_DATA_DIR } from './config';
+import { requestOpenRouterChat } from './ai/openrouter-client';
 import {
   parseScorePayload,
   scoreToVerdict,
-} from './validators';
-import { resolveRequiredRunDirFromCli } from '../utils/run-dir';
+} from './ai/validators';
+import { resolveRequiredRunDirFromCli } from './utils/run-dir';
 
 interface ScoreVerdictFile {
   jobId: string;
@@ -58,7 +58,7 @@ function getScoresDir(runDir: string): string {
 }
 
 function getLogFile(runDir: string): string {
-  return path.join(runDir, 'ai-step4-log.json');
+  return path.join(runDir, '05-score-survivors-log.json');
 }
 
 function getCvKeywordsFile(): string {
@@ -330,9 +330,9 @@ export async function main(runDirArg?: string): Promise<void> {
   await loadEnvFileIfProvided(argv);
   const runDir = runDirArg ?? await resolveRequiredRunDirFromCli(argv);
 
-  logger.info('Starting AI Step 2: score pre-filter survivors');
+  logger.info('Starting Phase 5: score pre-filter survivors');
   const result = await runStep4(runDir);
-  logger.success('AI Step 2 complete');
+  logger.success('Phase 5 complete');
   logger.info(`  Survivors scored: ${result.total}`);
   logger.info(`  PASS: ${result.pass}`);
   logger.info(`  REVIEW: ${result.review}`);
@@ -342,7 +342,7 @@ export async function main(runDirArg?: string): Promise<void> {
 
 if (require.main === module) {
   void main().catch((error: unknown) => {
-    logger.error(`AI Step 2 failed: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(`Phase 5 failed: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
   });
 }

@@ -1,16 +1,16 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import type { DiscoveredJob } from '../types';
-import { slugify } from '../utils/slugify';
-import * as logger from '../utils/logger';
-import { loadEnvFileIfProvided } from '../utils/env-loader';
-import { requestOpenRouterChat } from './openrouter-client';
+import type { DiscoveredJob } from './types';
+import { slugify } from './utils/slugify';
+import * as logger from './utils/logger';
+import { loadEnvFileIfProvided } from './utils/env-loader';
+import { requestOpenRouterChat } from './ai/openrouter-client';
 import {
   type ExtractedJobCandidate,
   normalizeHttpUrl,
   parseExtractedCandidates,
-} from './validators';
-import { resolveRequiredRunDirFromCli } from '../utils/run-dir';
+} from './ai/validators';
+import { resolveRequiredRunDirFromCli } from './utils/run-dir';
 
 interface GmailEmail {
   id: string;
@@ -52,7 +52,7 @@ function getDiscoveredJobsFile(runDir: string): string {
 }
 
 function getStepLogFile(runDir: string): string {
-  return path.join(runDir, 'ai-step2-log.json');
+  return path.join(runDir, '02-extract-from-emails-log.json');
 }
 
 async function chooseGmailIndexFile(runDir: string): Promise<string> {
@@ -455,9 +455,9 @@ export async function main(runDirArg?: string): Promise<void> {
   await loadEnvFileIfProvided(argv);
   const runDir = runDirArg ?? await resolveRequiredRunDirFromCli(argv);
 
-  logger.info('Starting AI Step 1: extract jobs from Gmail index');
+  logger.info('Starting Phase 2: extract jobs from Gmail index');
   const result = await runStep2(runDir);
-  logger.success('AI Step 1 complete');
+  logger.success('Phase 2 complete');
   logger.info(`  Gmail index: ${result.indexFile}`);
   logger.info(`  Emails processed: ${result.emailsProcessed}`);
   logger.info(`  Candidates extracted: ${result.candidatesExtracted}`);
@@ -468,7 +468,7 @@ export async function main(runDirArg?: string): Promise<void> {
 
 if (require.main === module) {
   void main().catch((error: unknown) => {
-    logger.error(`AI Step 1 failed: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(`Phase 2 failed: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
   });
 }

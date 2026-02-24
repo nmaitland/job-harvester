@@ -1,6 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { runStep4 } from '../ai/step4-score-survivors';
+import { runStep4 } from '../05-score-survivors';
 import { requestOpenRouterChat } from '../ai/openrouter-client';
 
 jest.mock('fs/promises');
@@ -108,4 +108,3 @@ describe('runStep4', () => {
     expect(verdict.reasoning).toContain('Fallback verdict');
   });
 });
-
