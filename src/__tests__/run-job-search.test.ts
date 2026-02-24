@@ -225,8 +225,8 @@ describe('writeRunManifest', () => {
     expect(manifest.files['job-scores/*.json'].owner).toBe('AI');
     expect(manifest.files['compile-results.json'].owner).toBe('04-compile-results.ts');
     expect(manifest.files['pdfs/*.pdf'].owner).toBe('05-generate-pdfs.ts');
-    expect(manifest.files['run-summary/*.txt'].owner).toBe('07-summarize-run.ts');
-    expect(manifest.files['upload-results.json'].owner).toBe('06-upload.ts');
+    expect(manifest.files['run-summary/*.txt'].owner).toBe('06-summarize-run.ts');
+    expect(manifest.files['upload-results.json'].owner).toBe('07-upload.ts');
   });
 
   it('should set correct AI permissions', async () => {

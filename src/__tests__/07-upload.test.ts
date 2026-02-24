@@ -1,9 +1,9 @@
 /**
- * Tests for 06-upload.ts
+ * Tests for 07-upload.ts
  */
 
 import * as fs from 'fs/promises';
-import { uploadSpecsToOneDrive, uploadPdfsToGoogleDrive } from '../06-upload';
+import { uploadSpecsToOneDrive, uploadPdfsToGoogleDrive } from '../07-upload';
 import type { PDFResult } from '../types';
 
 // Mock fs/promises

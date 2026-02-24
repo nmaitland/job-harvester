@@ -158,7 +158,7 @@ export interface PDFOutput {
 }
 
 // ============================================================================
-// Run Summary Types (07-summarize-run.ts)
+// Run Summary Types (06-summarize-run.ts)
 // ============================================================================
 
 export interface RunSummaryOutput {
@@ -171,7 +171,7 @@ export interface RunSummaryOutput {
 }
 
 // ============================================================================
-// Upload Types (06-upload.ts)
+// Upload Types (07-upload.ts)
 // ============================================================================
 
 export interface UploadResult {

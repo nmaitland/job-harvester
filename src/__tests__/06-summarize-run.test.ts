@@ -1,6 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { runSummarize } from '../07-summarize-run';
+import { runSummarize } from '../06-summarize-run';
 
 jest.mock('fs/promises');
 jest.mock('../utils/logger', () => ({
