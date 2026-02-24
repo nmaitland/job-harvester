@@ -1,5 +1,5 @@
 /**
- * 01-discover.ts — Discovery
+ * discover.ts — Discovery
  *
  * Discovers job postings from Brave Search API, LinkedIn browser, and Gmail (download only).
  */

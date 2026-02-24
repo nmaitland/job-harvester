@@ -1,5 +1,5 @@
 /**
- * 07-generate-pdfs.ts — Generate PDFs
+ * generate-pdfs.ts — Generate PDFs
  *
  * Generates PDFs for PASS and REVIEW jobs using Playwright.
  */

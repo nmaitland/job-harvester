@@ -234,14 +234,15 @@ describe('writeRunManifest', () => {
     const content = writeCall?.[1] as string;
     const manifest = JSON.parse(content);
 
-    expect(manifest.files['discovered-jobs.json'].owner).toBe('01-discover.ts');
-    expect(manifest.files['fetched-specs.json'].owner).toBe('03-fetch-specs.ts');
-    expect(manifest.files['pre-filter-survivors.json'].owner).toBe('04-prefilter.ts');
-    expect(manifest.files['job-scores/*.json'].owner).toBe('05-score-survivors.ts');
-    expect(manifest.files['compile-results.json'].owner).toBe('06-compile-results.ts');
-    expect(manifest.files['pdfs/*.pdf'].owner).toBe('07-generate-pdfs.ts');
-    expect(manifest.files['run-summary/*.txt'].owner).toBe('08-summarize-run.ts');
-    expect(manifest.files['upload-results.json'].owner).toBe('09-upload.ts');
+    expect(manifest.files['discovered-jobs.json'].owner).toBe('discover.ts');
+    expect(manifest.files['extract-from-websites-log.json'].owner).toBe('extract-from-websites.ts');
+    expect(manifest.files['fetched-specs.json'].owner).toBe('fetch-specs.ts');
+    expect(manifest.files['pre-filter-survivors.json'].owner).toBe('prefilter.ts');
+    expect(manifest.files['job-scores/*.json'].owner).toBe('score-survivors.ts');
+    expect(manifest.files['compile-results.json'].owner).toBe('compile-results.ts');
+    expect(manifest.files['pdfs/*.pdf'].owner).toBe('generate-pdfs.ts');
+    expect(manifest.files['run-summary/*.txt'].owner).toBe('summarize-run.ts');
+    expect(manifest.files['upload-results.json'].owner).toBe('upload.ts');
   });
 
   it('should set correct AI permissions', async () => {

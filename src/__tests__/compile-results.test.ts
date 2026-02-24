@@ -8,7 +8,7 @@ import {
   applyThreshold,
   findVerdictFile,
   readJobScore,
-} from '../06-compile-results';
+} from '../compile-results';
 import type { JobScore } from '../types';
 
 // Mock fs/promises

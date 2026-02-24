@@ -7,7 +7,7 @@ import {
   checkLinkedInLoginState,
   extractEmailBody,
   deduplicateByUrl,
-} from '../01-discover';
+} from '../discover';
 import type { DiscoveredJob } from '../types';
 
 // Mock fetch globally

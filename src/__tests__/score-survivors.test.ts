@@ -1,6 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { runStep4 } from '../05-score-survivors';
+import { runStep4 } from '../score-survivors';
 import { requestOpenRouterChat } from '../ai/openrouter-client';
 
 jest.mock('fs/promises');

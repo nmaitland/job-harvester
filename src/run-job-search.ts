@@ -12,15 +12,16 @@ import { loadEnvFileIfProvided } from './utils/env-loader';
 import { assertValidRunDirName, requireExistingRunDir, resolveRootWorkDirFromEnv } from './utils/run-dir';
 
 // Import all script main functions
-import { main as discoverMain } from './01-discover';
-import { main as extractFromEmailsMain } from './02-extract-from-emails';
-import { main as fetchSpecsMain } from './03-fetch-specs';
-import { main as prefilterMain } from './04-prefilter';
-import { main as scoreSurvivorsMain } from './05-score-survivors';
-import { main as compileResultsMain } from './06-compile-results';
-import { main as generatePdfsMain } from './07-generate-pdfs';
-import { main as summarizeRunMain } from './08-summarize-run';
-import { main as uploadMain } from './09-upload';
+import { main as discoverMain } from './discover';
+import { main as extractFromWebsitesMain } from './extract-from-websites';
+import { main as extractFromEmailsMain } from './extract-from-emails';
+import { main as fetchSpecsMain } from './fetch-specs';
+import { main as prefilterMain } from './prefilter';
+import { main as scoreSurvivorsMain } from './score-survivors';
+import { main as compileResultsMain } from './compile-results';
+import { main as generatePdfsMain } from './generate-pdfs';
+import { main as summarizeRunMain } from './summarize-run';
+import { main as uploadMain } from './upload';
 
 type Phase = 'all' | 'discovery' | 'email-processing' | 'fetch-and-filter' | 'scoring' | 'output';
 
@@ -150,61 +151,67 @@ export async function writeRunManifest(runDir: string, phase: Phase): Promise<vo
     startedAt: new Date().toISOString(),
     files: {
       'discovered-jobs.json': {
-        owner: '01-discover.ts',
+        owner: 'discover.ts',
         aiMayRead: true,
         aiMayWrite: false,
-        description: 'Jobs discovered from Brave, LinkedIn, Gmail',
+        description: 'Jobs discovered from Brave, LinkedIn, Gmail (appended by extractors)',
+      },
+      'extract-from-websites-log.json': {
+        owner: 'extract-from-websites.ts',
+        aiMayRead: true,
+        aiMayWrite: false,
+        description: 'Log of AI extraction from Brave result pages',
       },
       'fetched-specs.json': {
-        owner: '03-fetch-specs.ts',
+        owner: 'fetch-specs.ts',
         aiMayRead: true,
         aiMayWrite: false,
         description: 'Full job specifications fetched from sources',
       },
       'pre-filter-survivors.json': {
-        owner: '04-prefilter.ts',
+        owner: 'prefilter.ts',
         aiMayRead: true,
         aiMayWrite: false,
         description: 'Jobs that passed pre-filter (for AI scoring)',
       },
       'pre-filter-rejections.json': {
-        owner: '04-prefilter.ts',
+        owner: 'prefilter.ts',
         aiMayRead: false,
         aiMayWrite: false,
         description: 'Jobs rejected by pre-filter',
       },
       'job-scores/*.json': {
-        owner: '05-score-survivors.ts',
+        owner: 'score-survivors.ts',
         aiMayRead: false,
         aiMayWrite: true,
         description: 'AI-generated job scores',
       },
       'compile-results.json': {
-        owner: '06-compile-results.ts',
+        owner: 'compile-results.ts',
         aiMayRead: true,
         aiMayWrite: false,
         description: 'Final compiled results with PASS/REVIEW/REJECT',
       },
       'all-rejections.json': {
-        owner: '06-compile-results.ts',
+        owner: 'compile-results.ts',
         aiMayRead: true,
         aiMayWrite: false,
         description: 'All rejected jobs (pre-filter + AI)',
       },
       'pdfs/*.pdf': {
-        owner: '07-generate-pdfs.ts',
+        owner: 'generate-pdfs.ts',
         aiMayRead: true,
         aiMayWrite: false,
         description: 'Generated PDFs for PASS/REVIEW jobs',
       },
       'run-summary/*.txt': {
-        owner: '08-summarize-run.ts',
+        owner: 'summarize-run.ts',
         aiMayRead: true,
         aiMayWrite: false,
         description: 'Human-readable run summary and review list',
       },
       'upload-results.json': {
-        owner: '09-upload.ts',
+        owner: 'upload.ts',
         aiMayRead: true,
         aiMayWrite: false,
         description: 'Upload results with cloud URLs',
@@ -234,31 +241,34 @@ export async function runScript(scriptName: string, _runDir: string, dryRun: boo
 
   try {
     switch (scriptName) {
-      case '01-discover':
+      case 'discover':
         await discoverMain(_runDir);
         break;
-      case '02-extract-from-emails':
+      case 'extract-from-websites':
+        await extractFromWebsitesMain(_runDir);
+        break;
+      case 'extract-from-emails':
         await extractFromEmailsMain(_runDir);
         break;
-      case '03-fetch-specs':
+      case 'fetch-specs':
         await fetchSpecsMain(_runDir);
         break;
-      case '04-prefilter':
+      case 'prefilter':
         await prefilterMain(_runDir);
         break;
-      case '05-score-survivors':
+      case 'score-survivors':
         await scoreSurvivorsMain(_runDir);
         break;
-      case '06-compile-results':
+      case 'compile-results':
         await compileResultsMain(_runDir);
         break;
-      case '07-generate-pdfs':
+      case 'generate-pdfs':
         await generatePdfsMain(_runDir);
         break;
-      case '08-summarize-run':
+      case 'summarize-run':
         await summarizeRunMain(_runDir);
         break;
-      case '09-upload':
+      case 'upload':
         await uploadMain(_runDir);
         break;
       default:
@@ -278,7 +288,7 @@ export async function runScript(scriptName: string, _runDir: string, dryRun: boo
 export async function runDiscoveryPhase(runDir: string, dryRun: boolean): Promise<void> {
   logger.info('=== Phase: Discovery ===');
 
-  await runScript('01-discover', runDir, dryRun);
+  await runScript('discover', runDir, dryRun);
 }
 
 /**
@@ -287,7 +297,8 @@ export async function runDiscoveryPhase(runDir: string, dryRun: boolean): Promis
 export async function runEmailProcessingPhase(runDir: string, dryRun: boolean): Promise<void> {
   logger.info('=== Phase: Email Processing ===');
 
-  await runScript('02-extract-from-emails', runDir, dryRun);
+  await runScript('extract-from-websites', runDir, dryRun);
+  await runScript('extract-from-emails', runDir, dryRun);
 }
 
 /**
@@ -296,8 +307,8 @@ export async function runEmailProcessingPhase(runDir: string, dryRun: boolean): 
 export async function runFetchAndFilterPhase(runDir: string, dryRun: boolean): Promise<void> {
   logger.info('=== Phase: Fetch and Filter ===');
 
-  await runScript('03-fetch-specs', runDir, dryRun);
-  await runScript('04-prefilter', runDir, dryRun);
+  await runScript('fetch-specs', runDir, dryRun);
+  await runScript('prefilter', runDir, dryRun);
 }
 
 /**
@@ -306,7 +317,7 @@ export async function runFetchAndFilterPhase(runDir: string, dryRun: boolean): P
 export async function runScoringPhase(runDir: string, dryRun: boolean): Promise<void> {
   logger.info('=== Phase: Scoring ===');
 
-  await runScript('05-score-survivors', runDir, dryRun);
+  await runScript('score-survivors', runDir, dryRun);
 }
 
 /**
@@ -316,10 +327,10 @@ export async function runOutputPhase(runDir: string, dryRun: boolean): Promise<v
   logger.info('=== Phase: Output ===');
 
   await validateOutputPhase(runDir);
-  await runScript('06-compile-results', runDir, dryRun);
-  await runScript('07-generate-pdfs', runDir, dryRun);
-  await runScript('08-summarize-run', runDir, dryRun);
-  await runScript('09-upload', runDir, dryRun);
+  await runScript('compile-results', runDir, dryRun);
+  await runScript('generate-pdfs', runDir, dryRun);
+  await runScript('summarize-run', runDir, dryRun);
+  await runScript('upload', runDir, dryRun);
 }
 
 /**

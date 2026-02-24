@@ -11,7 +11,7 @@ import {
   isJuniorRole,
   applyFilters,
   runPreFilter,
-} from '../04-prefilter';
+} from '../prefilter';
 import type { JobSpec } from '../types';
 
 // Mock fs/promises

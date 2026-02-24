@@ -3,7 +3,7 @@
  */
 
 import * as fs from 'fs/promises';
-import { uploadSpecsToOneDrive, uploadPdfsToGoogleDrive } from '../09-upload';
+import { uploadSpecsToOneDrive, uploadPdfsToGoogleDrive } from '../upload';
 import type { PDFResult } from '../types';
 
 // Mock fs/promises
