@@ -14,6 +14,9 @@ import { getSecrets } from './utils/secrets';
 import { loadEnvFileIfProvided } from './utils/env-loader';
 import { sleep } from './utils/http';
 import { resolveRequiredRunDirFromCli } from './utils/run-dir';
+import { MANAGEMENT_DATA_DIR } from './config';
+import { normalizeHttpUrl } from './ai/validators';
+import { loadProcessedUrlRegistry } from './utils/processed-urls';
 
 function getEmailsDir(runDir: string): string {
   return path.join(runDir, 'emails');
@@ -21,6 +24,14 @@ function getEmailsDir(runDir: string): string {
 
 function getDiscoveredJobsFile(runDir: string): string {
   return path.join(runDir, 'discovered-jobs.json');
+}
+
+function getManagementDataDir(): string {
+  const envDir = process.env.JOB_HARVESTER_MANAGEMENT_DATA_DIR;
+  if (envDir !== undefined && envDir !== '') {
+    return envDir;
+  }
+  return MANAGEMENT_DATA_DIR;
 }
 
 // Brave Search API configuration
@@ -200,10 +211,12 @@ async function loadSecrets(): Promise<{
  */
 export async function discoverViaBrave(
   apiKey: string,
-  queries: string[]
+  queries: string[],
+  knownUrls: Set<string> = new Set<string>()
 ): Promise<DiscoveredJob[]> {
   const jobs: DiscoveredJob[] = [];
   const errors: string[] = [];
+  let skippedKnownUrls = 0;
   const braveApiBase = getBraveApiBase();
   const braveRateLimitMaxRetries = getBraveRateLimitMaxRetries();
   const braveRateLimitBaseDelayMs = getBraveRateLimitBaseDelayMs();
@@ -264,6 +277,11 @@ export async function discoverViaBrave(
         for (const result of results) {
           const job = extractJobFromBraveResult(result);
           if (job !== null) {
+            const normalizedUrl = normalizeHttpUrl(job.url);
+            if (normalizedUrl !== null && knownUrls.has(normalizedUrl)) {
+              skippedKnownUrls++;
+              continue;
+            }
             jobs.push(job);
           }
         }
@@ -275,6 +293,10 @@ export async function discoverViaBrave(
       logger.error(`Brave search failed for "${query}": ${error instanceof Error ? error.message : String(error)}`);
       errors.push(`Error: ${query}`);
     }
+  }
+
+  if (skippedKnownUrls > 0) {
+    logger.info(`Brave discovery skipped ${skippedKnownUrls} URL(s) already processed in previous runs`);
   }
 
   return jobs;
@@ -687,6 +709,7 @@ export async function main(runDirArg?: string): Promise<void> {
   logger.info('Starting discovery...');
 
   const secrets = await loadSecrets();
+  const processedUrlSet = await loadProcessedUrlRegistry(getManagementDataDir());
   const timestamp = new Date().toISOString();
   const log: DiscoveryLog = {
     timestamp,
@@ -698,9 +721,9 @@ export async function main(runDirArg?: string): Promise<void> {
   try {
     // Discover from Brave
     const braveQueries = getBraveQueries();
-    const braveJobs = await discoverViaBrave(secrets.braveApiKey, braveQueries);
+    const braveJobs = await discoverViaBrave(secrets.braveApiKey, braveQueries, processedUrlSet);
     log.brave.count = braveJobs.length;
-    logger.info(`Brave discovery: ${braveJobs.length} jobs`);
+    logger.info(`Brave discovery: ${braveJobs.length} sources`);
 
     // Discover from LinkedIn
     const linkedinJobs = await discoverViaLinkedIn(
@@ -721,7 +744,7 @@ export async function main(runDirArg?: string): Promise<void> {
 
     // Combine and deduplicate
     const allJobs = deduplicateByUrl([...braveJobs, ...linkedinJobs]);
-    logger.info(`Total unique jobs after deduplication: ${allJobs.length}`);
+    logger.info(`Total unique source pages after deduplication: ${allJobs.length}`);
 
     // Write discovered jobs
     const output: DiscoveryOutput = {

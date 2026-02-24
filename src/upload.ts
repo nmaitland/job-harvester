@@ -9,12 +9,14 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { google } from 'googleapis';
 import { Client } from '@microsoft/microsoft-graph-client';
-import type { PDFResult, UploadResult, UploadOutput } from './types';
+import type { DiscoveredJob, PDFResult, UploadResult, UploadOutput } from './types';
 import * as logger from './utils/logger';
 import { getSecrets } from './utils/secrets';
 import { retry, withTimeout } from './utils/http';
 import { loadEnvFileIfProvided } from './utils/env-loader';
 import { resolveRequiredRunDirFromCli } from './utils/run-dir';
+import { MANAGEMENT_DATA_DIR } from './config';
+import { appendUrlsToRegistry, buildProcessedUrlEntries } from './utils/processed-urls';
 
 // Google Drive configuration
 function getGoogleDriveFolderId(): string {
@@ -25,6 +27,10 @@ interface UploadLog {
   timestamp: string;
   onedrive: { count: number; errors: string[] };
   googledrive: { count: number; errors: string[] };
+}
+
+interface DiscoveredJobsFile {
+  jobs?: DiscoveredJob[];
 }
 
 interface GoogleDriveUploadResult {
@@ -67,6 +73,27 @@ function getAllRejectionsFile(runDir: string): string {
 
 function getUploadResultsFile(runDir: string): string {
   return path.join(runDir, 'upload-results.json');
+}
+
+function getDiscoveredJobsFile(runDir: string): string {
+  return path.join(runDir, 'discovered-jobs.json');
+}
+
+function getManagementDataDir(): string {
+  const envDir = process.env.JOB_HARVESTER_MANAGEMENT_DATA_DIR;
+  if (envDir !== undefined && envDir !== '') {
+    return envDir;
+  }
+  return MANAGEMENT_DATA_DIR;
+}
+
+export async function recordProcessedUrlsForRun(runDir: string, discoveredJobsFile: string): Promise<number> {
+  const discoveredContent = await fs.readFile(discoveredJobsFile, 'utf-8');
+  const discovered = JSON.parse(discoveredContent) as DiscoveredJobsFile;
+  const jobs = Array.isArray(discovered.jobs) ? discovered.jobs : [];
+  const entries = buildProcessedUrlEntries(jobs, runDir);
+  await appendUrlsToRegistry(getManagementDataDir(), entries);
+  return entries.length;
 }
 
 function getRunSummaryDir(runDir: string): string {
@@ -347,6 +374,7 @@ export async function main(runDirArg?: string): Promise<void> {
   const compileResultsFile = getCompiledResultsFile(runDir);
   const allRejectionsFile = getAllRejectionsFile(runDir);
   const uploadResultsFile = getUploadResultsFile(runDir);
+  const discoveredJobsFile = getDiscoveredJobsFile(runDir);
   const archiveFolderName = getArchiveFolderName(runDir);
 
   const credentials = await loadCredentials();
@@ -422,6 +450,13 @@ export async function main(runDirArg?: string): Promise<void> {
       JSON.stringify(output, null, 2),
       'utf-8'
     );
+
+    try {
+      const recordedCount = await recordProcessedUrlsForRun(runDir, discoveredJobsFile);
+      logger.info(`Recorded ${recordedCount} processed URL(s) in management registry`);
+    } catch (error) {
+      logger.warn(`Failed to update processed URL registry: ${error instanceof Error ? error.message : String(error)}`);
+    }
 
     logger.success('Upload complete:');
     logger.info(`  OneDrive: ${log.onedrive.count} files`);

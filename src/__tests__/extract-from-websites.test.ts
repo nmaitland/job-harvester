@@ -46,6 +46,7 @@ describe('mergeWebsiteCandidatesIntoDiscovered', () => {
     expect(result.jobs).toHaveLength(2);
     expect(result.appended).toBe(1);
     expect(result.duplicateUrls).toBe(1);
+    expect(result.alreadyProcessed).toBe(0);
     expect(result.invalidUrls).toBe(0);
     expect(result.jobs[1]?.source).toBe('brave-extracted');
     expect(result.jobs[1]?.url).toBe('https://beta.example/jobs/999');
@@ -67,7 +68,31 @@ describe('mergeWebsiteCandidatesIntoDiscovered', () => {
 
     expect(result.jobs).toHaveLength(0);
     expect(result.appended).toBe(0);
+    expect(result.alreadyProcessed).toBe(0);
     expect(result.invalidUrls).toBe(1);
+  });
+
+  it('skips URLs already processed in previous runs', () => {
+    const candidates: ExtractedJobCandidate[] = [
+      {
+        company: 'Gamma',
+        title: 'Director',
+        url: 'https://gamma.example/jobs/777?utm=abc',
+      },
+    ];
+
+    const result = mergeWebsiteCandidatesIntoDiscovered(
+      [],
+      candidates,
+      discoveredAt,
+      new Set<string>(['https://gamma.example/jobs/777'])
+    );
+
+    expect(result.jobs).toHaveLength(0);
+    expect(result.appended).toBe(0);
+    expect(result.duplicateUrls).toBe(0);
+    expect(result.alreadyProcessed).toBe(1);
+    expect(result.invalidUrls).toBe(0);
   });
 });
 
@@ -81,6 +106,7 @@ describe('runWebsiteExtraction', () => {
   });
 
   it('processes only brave-discovered sources for fetching and extraction', async () => {
+    mockedFs.readFile.mockRejectedValueOnce(new Error('no processed registry yet'));
     mockedFs.readFile.mockResolvedValueOnce(
       JSON.stringify({
         jobs: [
@@ -129,6 +155,7 @@ describe('runWebsiteExtraction', () => {
   });
 
   it('calls extractor with webpage context and source hint', async () => {
+    mockedFs.readFile.mockRejectedValueOnce(new Error('no processed registry yet'));
     mockedFs.readFile.mockResolvedValueOnce(
       JSON.stringify({
         jobs: [
@@ -163,6 +190,7 @@ describe('runWebsiteExtraction', () => {
   });
 
   it('writes step log with expected shape and counters', async () => {
+    mockedFs.readFile.mockRejectedValueOnce(new Error('no processed registry yet'));
     mockedFs.readFile.mockResolvedValueOnce(
       JSON.stringify({
         jobs: [
@@ -206,11 +234,13 @@ describe('runWebsiteExtraction', () => {
     expect(payload.candidatesExtracted).toBe(1);
     expect(payload.appended).toBe(1);
     expect(payload.duplicateUrls).toBe(0);
+    expect(payload.alreadyProcessed).toBe(0);
     expect(payload.invalidUrls).toBe(0);
     expect(typeof payload.timestamp).toBe('string');
   });
 
   it('handles fetch failures gracefully and still writes outputs', async () => {
+    mockedFs.readFile.mockRejectedValueOnce(new Error('no processed registry yet'));
     mockedFs.readFile.mockResolvedValueOnce(
       JSON.stringify({
         jobs: [
@@ -235,6 +265,7 @@ describe('runWebsiteExtraction', () => {
       candidatesExtracted: 0,
       appended: 0,
       duplicateUrls: 0,
+      alreadyProcessed: 0,
       invalidUrls: 0,
     });
     expect(mockedExtractJobCandidates).not.toHaveBeenCalled();

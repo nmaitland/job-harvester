@@ -171,6 +171,20 @@ export interface RunSummaryOutput {
   aiUsed: boolean;
 }
 
+export interface ProcessedUrlEntry {
+  url: string;
+  normalizedUrl: string;
+  recordedAt: string;
+  runTimestamp: string;
+  source: string;
+}
+
+export interface ProcessedUrlRegistry {
+  version: 1;
+  updatedAt: string;
+  urls: ProcessedUrlEntry[];
+}
+
 // ============================================================================
 // Upload Types (upload.ts)
 // ============================================================================

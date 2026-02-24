@@ -35,6 +35,7 @@ describe('mergeCandidatesIntoDiscovered', () => {
     expect(result.jobs).toHaveLength(2);
     expect(result.appended).toBe(1);
     expect(result.duplicateUrls).toBe(1);
+    expect(result.alreadyProcessed).toBe(0);
     expect(result.invalidUrls).toBe(0);
     expect(result.jobs[1]?.source).toBe('gmail');
     expect(result.jobs[1]?.url).toBe('https://beta.example/jobs/999');
@@ -56,6 +57,28 @@ describe('mergeCandidatesIntoDiscovered', () => {
 
     expect(result.jobs).toHaveLength(0);
     expect(result.appended).toBe(0);
+    expect(result.alreadyProcessed).toBe(0);
     expect(result.invalidUrls).toBe(1);
+  });
+
+  it('skips URLs already processed in previous runs', () => {
+    const result = mergeCandidatesIntoDiscovered(
+      [],
+      [
+        {
+          company: 'Gamma',
+          title: 'Director',
+          url: 'https://gamma.example/jobs/777?utm=email',
+        },
+      ],
+      discoveredAt,
+      new Set<string>(['https://gamma.example/jobs/777'])
+    );
+
+    expect(result.jobs).toHaveLength(0);
+    expect(result.appended).toBe(0);
+    expect(result.duplicateUrls).toBe(0);
+    expect(result.alreadyProcessed).toBe(1);
+    expect(result.invalidUrls).toBe(0);
   });
 });

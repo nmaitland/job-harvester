@@ -4,12 +4,14 @@ import type { DiscoveredJob } from './types';
 import { slugify } from './utils/slugify';
 import * as logger from './utils/logger';
 import { loadEnvFileIfProvided } from './utils/env-loader';
+import { MANAGEMENT_DATA_DIR } from './config';
 import {
   type ExtractedJobCandidate,
   normalizeHttpUrl,
 } from './ai/validators';
 import { extractJobCandidates } from './ai/extract-job-candidates';
 import { resolveRequiredRunDirFromCli } from './utils/run-dir';
+import { loadProcessedUrlRegistry } from './utils/processed-urls';
 
 interface WebsiteSource {
   id: string;
@@ -37,6 +39,7 @@ interface MergeResult {
   jobs: DiscoveredJob[];
   appended: number;
   duplicateUrls: number;
+  alreadyProcessed: number;
   invalidUrls: number;
 }
 
@@ -45,6 +48,7 @@ interface WebsiteExtractionResult {
   candidatesExtracted: number;
   appended: number;
   duplicateUrls: number;
+  alreadyProcessed: number;
   invalidUrls: number;
 }
 
@@ -58,6 +62,14 @@ function asString(value: unknown): string {
 
 function getDiscoveredJobsFile(runDir: string): string {
   return path.join(runDir, 'discovered-jobs.json');
+}
+
+function getManagementDataDir(): string {
+  const envDir = process.env.JOB_HARVESTER_MANAGEMENT_DATA_DIR;
+  if (envDir !== undefined && envDir !== '') {
+    return envDir;
+  }
+  return MANAGEMENT_DATA_DIR;
 }
 
 function getStepLogFile(runDir: string): string {
@@ -227,7 +239,8 @@ function getBraveSources(jobs: DiscoveredJob[]): WebsiteSource[] {
 export function mergeWebsiteCandidatesIntoDiscovered(
   existingJobs: DiscoveredJob[],
   candidates: ExtractedJobCandidate[],
-  discoveredAt: string
+  discoveredAt: string,
+  globalKnownUrls: Set<string> = new Set<string>()
 ): MergeResult {
   const mergedJobs = [...existingJobs];
   const existingUrls = new Set<string>();
@@ -243,6 +256,7 @@ export function mergeWebsiteCandidatesIntoDiscovered(
 
   let appended = 0;
   let duplicateUrls = 0;
+  let alreadyProcessed = 0;
   let invalidUrls = 0;
   const day = discoveredAt.slice(0, 10);
 
@@ -255,6 +269,11 @@ export function mergeWebsiteCandidatesIntoDiscovered(
 
     if (existingUrls.has(normalizedUrl)) {
       duplicateUrls++;
+      continue;
+    }
+
+    if (globalKnownUrls.has(normalizedUrl)) {
+      alreadyProcessed++;
       continue;
     }
 
@@ -281,12 +300,14 @@ export function mergeWebsiteCandidatesIntoDiscovered(
     jobs: mergedJobs,
     appended,
     duplicateUrls,
+    alreadyProcessed,
     invalidUrls,
   };
 }
 
 export async function runWebsiteExtraction(runDir: string): Promise<WebsiteExtractionResult> {
   const discoveredFile = getDiscoveredJobsFile(runDir);
+  const processedUrlSet = await loadProcessedUrlRegistry(getManagementDataDir());
   const discovered = await readDiscoveredDocument(discoveredFile);
   const sources = getBraveSources(discovered.jobs);
 
@@ -361,7 +382,7 @@ export async function runWebsiteExtraction(runDir: string): Promise<WebsiteExtra
   }
 
   const discoveredAt = new Date().toISOString();
-  const merged = mergeWebsiteCandidatesIntoDiscovered(discovered.jobs, allCandidates, discoveredAt);
+  const merged = mergeWebsiteCandidatesIntoDiscovered(discovered.jobs, allCandidates, discoveredAt, processedUrlSet);
   const nextDocument: Record<string, unknown> = {
     ...discovered.document,
     jobs: merged.jobs,
@@ -374,6 +395,7 @@ export async function runWebsiteExtraction(runDir: string): Promise<WebsiteExtra
     candidatesExtracted: allCandidates.length,
     appended: merged.appended,
     duplicateUrls: merged.duplicateUrls,
+    alreadyProcessed: merged.alreadyProcessed,
     invalidUrls: merged.invalidUrls,
   };
 
@@ -407,6 +429,7 @@ export async function main(runDirArg?: string): Promise<void> {
   logger.info(`  Candidates extracted: ${result.candidatesExtracted}`);
   logger.info(`  Appended: ${result.appended}`);
   logger.info(`  Duplicates skipped: ${result.duplicateUrls}`);
+  logger.info(`  Already processed skipped: ${result.alreadyProcessed}`);
   logger.info(`  Invalid URLs skipped: ${result.invalidUrls}`);
 }
 
@@ -416,4 +439,3 @@ if (require.main === module) {
     process.exit(1);
   });
 }
-
