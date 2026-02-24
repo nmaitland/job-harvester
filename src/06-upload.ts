@@ -4,7 +4,7 @@
  * Uploads job specs to OneDrive and PDFs to Google Drive.
  */
 
-import { createReadStream } from 'fs';
+import { createReadStream, existsSync } from 'fs';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { google } from 'googleapis';
@@ -207,7 +207,15 @@ export async function uploadPdfsToGoogleDrive(
     // Upload each PDF
     for (const pdf of pdfs) {
       try {
-        const fileName = path.basename(pdf.pdfPath);
+        const filePath = pdf.pdfPath;
+        if (!existsSync(filePath)) {
+          const missingError = `Failed to upload ${filePath}: PDF file not found`;
+          logger.error(missingError);
+          result.errors.push(missingError);
+          continue;
+        }
+
+        const fileName = path.basename(filePath);
         const response = await withTimeout(
           retry(
             () => drive.files.create({
@@ -217,7 +225,7 @@ export async function uploadPdfsToGoogleDrive(
               },
               media: {
                 mimeType: 'application/pdf',
-                body: createReadStream(pdf.pdfPath),
+                body: createReadStream(filePath),
               },
               fields: 'id, webViewLink',
             }),
