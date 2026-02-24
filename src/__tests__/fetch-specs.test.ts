@@ -8,7 +8,7 @@ import {
   extractLinkedInText,
   extractJobAgentText,
   extractWellfoundText,
-} from '../03-fetch-specs';
+} from '../fetch-specs';
 import type { DiscoveredJob } from '../types';
 
 // Mock fetch globally

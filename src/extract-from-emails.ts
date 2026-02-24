@@ -4,12 +4,11 @@ import type { DiscoveredJob } from './types';
 import { slugify } from './utils/slugify';
 import * as logger from './utils/logger';
 import { loadEnvFileIfProvided } from './utils/env-loader';
-import { requestOpenRouterChat } from './ai/openrouter-client';
 import {
   type ExtractedJobCandidate,
   normalizeHttpUrl,
-  parseExtractedCandidates,
 } from './ai/validators';
+import { extractJobCandidates } from './ai/extract-job-candidates';
 import { resolveRequiredRunDirFromCli } from './utils/run-dir';
 
 interface GmailEmail {
@@ -52,7 +51,7 @@ function getDiscoveredJobsFile(runDir: string): string {
 }
 
 function getStepLogFile(runDir: string): string {
-  return path.join(runDir, '02-extract-from-emails-log.json');
+  return path.join(runDir, 'extract-from-emails-log.json');
 }
 
 async function chooseGmailIndexFile(runDir: string): Promise<string> {
@@ -171,40 +170,15 @@ export async function loadGmailEmails(runDir: string): Promise<{ emails: GmailEm
   return { emails: fallback, indexFile };
 }
 
-function buildExtractionPrompt(email: GmailEmail): string {
-  const maxBodyChars = 12000;
-  const body = email.bodyText.slice(0, maxBodyChars);
-
-  return [
-    'Extract job links from this email.',
-    'Return JSON only, no markdown, with shape:',
-    '{"candidates":[{"company":"...","title":"...","url":"https://..."}]}',
-    'Rules:',
-    '- Include only concrete job posting URLs, not unsubscribe or tracking links',
-    '- Exclude generic company links without a specific role',
-    '- If title is unclear, return "Unknown role"',
-    '',
-    `Email ID: ${email.id}`,
-    `From: ${email.from}`,
-    `Subject: ${email.subject}`,
-    '',
-    body,
-  ].join('\n');
-}
-
 async function extractCandidatesFromEmail(email: GmailEmail): Promise<ExtractedJobCandidate[]> {
-  const content = await requestOpenRouterChat([
-    {
-      role: 'system',
-      content: 'You extract structured job posting links from email text and return strict JSON only.',
-    },
-    {
-      role: 'user',
-      content: buildExtractionPrompt(email),
-    },
-  ]);
-
-  return parseExtractedCandidates(content);
+  return extractJobCandidates(email.bodyText, {
+    type: 'email',
+    hint: [
+      `Email ID: ${email.id}`,
+      `From: ${email.from}`,
+      `Subject: ${email.subject}`,
+    ].join('\n'),
+  });
 }
 
 function toDiscoveredDocument(value: unknown): DiscoveredDocument {
@@ -234,7 +208,7 @@ function toDiscoveredDocument(value: unknown): DiscoveredDocument {
       continue;
     }
 
-    if (source !== 'gmail' && source !== 'linkedin' && source !== 'brave') {
+    if (source !== 'gmail' && source !== 'linkedin' && source !== 'brave' && source !== 'brave-extracted') {
       continue;
     }
 
@@ -339,7 +313,7 @@ export function mergeCandidatesIntoDiscovered(
   };
 }
 
-interface Step2Result {
+interface EmailExtractionResult {
   indexFile: string;
   emailsProcessed: number;
   candidatesExtracted: number;
@@ -353,8 +327,8 @@ interface ExtractionBatchResult {
   candidates: ExtractedJobCandidate[];
 }
 
-function getStep2BatchConcurrency(): number {
-  const raw = process.env.OPENROUTER_STEP2_BATCH_CONCURRENCY;
+function getEmailBatchConcurrency(): number {
+  const raw = process.env.OPENROUTER_EMAIL_BATCH_CONCURRENCY;
   if (raw === undefined || raw.trim() === '') {
     return 3;
   }
@@ -375,10 +349,10 @@ function chunkArray<T>(items: T[], batchSize: number): T[][] {
   return chunks;
 }
 
-export async function runStep2(runDir: string): Promise<Step2Result> {
+export async function runEmailExtraction(runDir: string): Promise<EmailExtractionResult> {
   const { emails, indexFile } = await loadGmailEmails(runDir);
   const discoveredFile = getDiscoveredJobsFile(runDir);
-  const batchConcurrency = getStep2BatchConcurrency();
+  const batchConcurrency = getEmailBatchConcurrency();
 
   const allCandidates: ExtractedJobCandidate[] = [];
   const batches = chunkArray(emails, batchConcurrency);
@@ -423,7 +397,7 @@ export async function runStep2(runDir: string): Promise<Step2Result> {
 
   await fs.writeFile(discoveredFile, JSON.stringify(nextDocument, null, 2), 'utf-8');
 
-  const result: Step2Result = {
+  const result: EmailExtractionResult = {
     indexFile,
     emailsProcessed: emails.length,
     candidatesExtracted: allCandidates.length,
@@ -455,9 +429,9 @@ export async function main(runDirArg?: string): Promise<void> {
   await loadEnvFileIfProvided(argv);
   const runDir = runDirArg ?? await resolveRequiredRunDirFromCli(argv);
 
-  logger.info('Starting Phase 2: extract jobs from Gmail index');
-  const result = await runStep2(runDir);
-  logger.success('Phase 2 complete');
+  logger.info('Starting email extraction from Gmail index');
+  const result = await runEmailExtraction(runDir);
+  logger.success('Email extraction complete');
   logger.info(`  Gmail index: ${result.indexFile}`);
   logger.info(`  Emails processed: ${result.emailsProcessed}`);
   logger.info(`  Candidates extracted: ${result.candidatesExtracted}`);

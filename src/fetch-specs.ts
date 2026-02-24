@@ -1,5 +1,5 @@
 /**
- * 03-fetch-specs.ts — Fetch Job Specs
+ * fetch-specs.ts — Fetch Job Specs
  *
  * Fetches full job descriptions for all discovered jobs using Brightdata API and Playwright.
  */

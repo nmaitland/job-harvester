@@ -21,14 +21,16 @@ npm run test:coverage
 
 Each script has a corresponding test file:
 
-- `02-extract-from-emails.ts` → `02-extract-from-emails.test.ts`
-- `03-fetch-specs.ts` → `03-fetch-specs.test.ts`
-- `04-prefilter.ts` → `04-prefilter.test.ts`
-- `05-score-survivors.ts` → `05-score-survivors.test.ts`
-- `06-compile-results.ts` → `06-compile-results.test.ts`
-- `07-generate-pdfs.ts` → `07-generate-pdfs.test.ts`
-- `08-summarize-run.ts` → `08-summarize-run.test.ts`
-- `09-upload.ts` → `09-upload.test.ts`
+- `discover.ts` → `discover.test.ts`
+- `extract-from-websites.ts` → `extract-from-websites.test.ts`
+- `extract-from-emails.ts` → `extract-from-emails.test.ts`
+- `fetch-specs.ts` → `fetch-specs.test.ts`
+- `prefilter.ts` → `prefilter.test.ts`
+- `score-survivors.ts` → `score-survivors.test.ts`
+- `compile-results.ts` → `compile-results.test.ts`
+- `generate-pdfs.ts` → `generate-pdfs.test.ts`
+- `summarize-run.ts` → `summarize-run.test.ts`
+- `upload.ts` → `upload.test.ts`
 
 ## Mocking Strategy
 

@@ -2,7 +2,7 @@
  * Tests for 07-generate-pdfs.ts
  */
 
-import { buildFilename, renderJobHtml, generateJobPdf } from '../07-generate-pdfs';
+import { buildFilename, renderJobHtml, generateJobPdf } from '../generate-pdfs';
 import type { CompiledJob } from '../types';
 
 // Mock logger

@@ -1,5 +1,5 @@
 /**
- * 09-upload.ts — Upload
+ * upload.ts — Upload
  *
  * Uploads job specs to OneDrive and PDFs to Google Drive.
  */

@@ -27,7 +27,7 @@ interface ScoreVerdictFile {
   scoredAt: string;
 }
 
-interface Step4Result {
+interface ScoringResult {
   total: number;
   pass: number;
   review: number;
@@ -58,15 +58,15 @@ function getScoresDir(runDir: string): string {
 }
 
 function getLogFile(runDir: string): string {
-  return path.join(runDir, '05-score-survivors-log.json');
+  return path.join(runDir, 'score-survivors-log.json');
 }
 
 function getCvKeywordsFile(): string {
   return path.join(resolveManagementDataDir(), 'jobs', 'cv-keywords.md');
 }
 
-function getStep4BatchConcurrency(): number {
-  const raw = process.env.OPENROUTER_STEP4_BATCH_CONCURRENCY;
+function getScoringBatchConcurrency(): number {
+  const raw = process.env.OPENROUTER_SCORING_BATCH_CONCURRENCY;
   if (raw === undefined || raw.trim() === '') {
     return 3;
   }
@@ -251,11 +251,11 @@ function buildFallbackVerdict(job: JobSpec, reason: string): ScoreVerdictFile {
   };
 }
 
-export async function runStep4(runDir: string): Promise<Step4Result> {
+export async function runScoring(runDir: string): Promise<ScoringResult> {
   const survivors = await loadSurvivors(runDir);
   const cvKeywords = await loadCvKeywords();
   const scoresDir = getScoresDir(runDir);
-  const batchConcurrency = getStep4BatchConcurrency();
+  const batchConcurrency = getScoringBatchConcurrency();
   await fs.mkdir(scoresDir, { recursive: true });
 
   const files: string[] = [];
@@ -300,7 +300,7 @@ export async function runStep4(runDir: string): Promise<Step4Result> {
     }
   }
 
-  const result: Step4Result = {
+  const result: ScoringResult = {
     total: survivors.length,
     pass,
     review,
@@ -330,15 +330,17 @@ export async function main(runDirArg?: string): Promise<void> {
   await loadEnvFileIfProvided(argv);
   const runDir = runDirArg ?? await resolveRequiredRunDirFromCli(argv);
 
-  logger.info('Starting Phase 5: score pre-filter survivors');
-  const result = await runStep4(runDir);
-  logger.success('Phase 5 complete');
+  logger.info('Starting scoring: score pre-filter survivors');
+  const result = await runScoring(runDir);
+  logger.success('Scoring complete');
   logger.info(`  Survivors scored: ${result.total}`);
   logger.info(`  PASS: ${result.pass}`);
   logger.info(`  REVIEW: ${result.review}`);
   logger.info(`  REJECT: ${result.reject}`);
   logger.info(`  Verdict files written: ${result.files.length}`);
 }
+
+export const runStep4 = runScoring;
 
 if (require.main === module) {
   void main().catch((error: unknown) => {

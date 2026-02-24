@@ -1,5 +1,5 @@
 import type { DiscoveredJob } from '../types';
-import { mergeCandidatesIntoDiscovered } from '../02-extract-from-emails';
+import { mergeCandidatesIntoDiscovered } from '../extract-from-emails';
 import type { ExtractedJobCandidate } from '../ai/validators';
 
 describe('mergeCandidatesIntoDiscovered', () => {
