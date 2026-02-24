@@ -14,6 +14,7 @@ import * as logger from './utils/logger';
 import { getSecrets } from './utils/secrets';
 import { retry, withTimeout } from './utils/http';
 import { loadEnvFileIfProvided } from './utils/env-loader';
+import { resolveRequiredRunDirFromCli } from './utils/run-dir';
 
 // Google Drive configuration
 function getGoogleDriveFolderId(): string {
@@ -48,36 +49,28 @@ async function loadCredentials(): Promise<{
   });
 }
 
-function resolveDataDir(): string {
-  const envDir = process.env.JOB_HARVESTER_WORK_DIR;
-  if (envDir === undefined || envDir === '') {
-    throw new Error('JOB_HARVESTER_WORK_DIR is required. Set it in environment or via --env-file.');
-  }
-  return envDir;
+function getSpecsDir(runDir: string): string {
+  return path.join(runDir, 'specs');
 }
 
-function getSpecsDir(): string {
-  return path.join(resolveDataDir(), 'specs');
+function getPdfsDir(runDir: string): string {
+  return path.join(runDir, 'pdfs');
 }
 
-function getPdfsDir(): string {
-  return path.join(resolveDataDir(), 'pdfs');
+function getCompiledResultsFile(runDir: string): string {
+  return path.join(runDir, 'compile-results.json');
 }
 
-function getCompiledResultsFile(): string {
-  return path.join(resolveDataDir(), 'compile-results.json');
+function getAllRejectionsFile(runDir: string): string {
+  return path.join(runDir, 'all-rejections.json');
 }
 
-function getAllRejectionsFile(): string {
-  return path.join(resolveDataDir(), 'all-rejections.json');
+function getUploadResultsFile(runDir: string): string {
+  return path.join(runDir, 'upload-results.json');
 }
 
-function getUploadResultsFile(): string {
-  return path.join(resolveDataDir(), 'upload-results.json');
-}
-
-function getRunSummaryDir(): string {
-  return path.join(resolveDataDir(), 'run-summary');
+function getRunSummaryDir(runDir: string): string {
+  return path.join(runDir, 'run-summary');
 }
 
 function getArchiveFolderName(runDir: string): string {
@@ -343,16 +336,18 @@ export async function uploadPdfsToGoogleDrive(
 /**
  * Main entry point
  */
-export async function main(): Promise<void> {
-  await loadEnvFileIfProvided(process.argv.slice(2));
+export async function main(runDirArg?: string): Promise<void> {
+  const args = process.argv.slice(2);
+  await loadEnvFileIfProvided(args);
+  const runDir = runDirArg ?? await resolveRequiredRunDirFromCli(args);
   logger.info('Starting upload...');
-  const specsDir = getSpecsDir();
-  const pdfsDir = getPdfsDir();
-  const runSummaryDir = getRunSummaryDir();
-  const compileResultsFile = getCompiledResultsFile();
-  const allRejectionsFile = getAllRejectionsFile();
-  const uploadResultsFile = getUploadResultsFile();
-  const archiveFolderName = getArchiveFolderName(resolveDataDir());
+  const specsDir = getSpecsDir(runDir);
+  const pdfsDir = getPdfsDir(runDir);
+  const runSummaryDir = getRunSummaryDir(runDir);
+  const compileResultsFile = getCompiledResultsFile(runDir);
+  const allRejectionsFile = getAllRejectionsFile(runDir);
+  const uploadResultsFile = getUploadResultsFile(runDir);
+  const archiveFolderName = getArchiveFolderName(runDir);
 
   const credentials = await loadCredentials();
   const timestamp = new Date().toISOString();

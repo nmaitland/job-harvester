@@ -19,30 +19,23 @@ import * as logger from './utils/logger';
 import { getSecret } from './utils/secrets';
 import { retry, sleep, withTimeout } from './utils/http';
 import { loadEnvFileIfProvided } from './utils/env-loader';
+import { resolveRequiredRunDirFromCli } from './utils/run-dir';
 
 // Brightdata configuration - read at runtime for testability
 async function getBrightdataApiKey(): Promise<string> {
   return getSecret('BRIGHTDATA_API_KEY');
 }
 
-function resolveDataDir(): string {
-  const envDir = process.env.JOB_HARVESTER_WORK_DIR;
-  if (envDir === undefined || envDir === '') {
-    throw new Error('JOB_HARVESTER_WORK_DIR is required. Set it in environment or via --env-file.');
-  }
-  return envDir;
+function getDiscoveredJobsFile(runDir: string): string {
+  return path.join(runDir, 'discovered-jobs.json');
 }
 
-function getDiscoveredJobsFile(): string {
-  return path.join(resolveDataDir(), 'discovered-jobs.json');
+function getFetchedSpecsFile(runDir: string): string {
+  return path.join(runDir, 'fetched-specs.json');
 }
 
-function getFetchedSpecsFile(): string {
-  return path.join(resolveDataDir(), 'fetched-specs.json');
-}
-
-function getSpecsDir(): string {
-  return path.join(resolveDataDir(), 'specs');
+function getSpecsDir(runDir: string): string {
+  return path.join(runDir, 'specs');
 }
 
 interface FetchResult {
@@ -587,11 +580,13 @@ export function extractWellfoundText(data: unknown[]): string {
 /**
  * Main entry point
  */
-export async function main(): Promise<void> {
-  await loadEnvFileIfProvided(process.argv.slice(2));
-  const discoveredJobsFile = getDiscoveredJobsFile();
-  const fetchedSpecsFile = getFetchedSpecsFile();
-  const specsDir = getSpecsDir();
+export async function main(runDirArg?: string): Promise<void> {
+  const args = process.argv.slice(2);
+  await loadEnvFileIfProvided(args);
+  const runDir = runDirArg ?? await resolveRequiredRunDirFromCli(args);
+  const discoveredJobsFile = getDiscoveredJobsFile(runDir);
+  const fetchedSpecsFile = getFetchedSpecsFile(runDir);
+  const specsDir = getSpecsDir(runDir);
   logger.info('Starting fetch specs...');
 
   try {

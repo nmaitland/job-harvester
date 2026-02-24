@@ -30,6 +30,8 @@ jest.mock('../config', () => ({
 const mockedFs = fs as jest.Mocked<typeof fs>;
 
 describe('parseArgs', () => {
+  const validRunDir = '/tmp/run-2026-02-24-10-00-00';
+
   it('should default to pre phase', () => {
     const result = parseArgs([]);
     expect(result.phase).toBe('pre');
@@ -43,14 +45,15 @@ describe('parseArgs', () => {
   });
 
   it('should parse --phase post', () => {
-    const result = parseArgs(['--phase', 'post', '--run-dir', '/run/123']);
+    const result = parseArgs(['--phase', 'post', '--run-dir', validRunDir]);
     expect(result.phase).toBe('post');
-    expect(result.runDir).toBe('/run/123');
+    expect(result.runDir).toBe(validRunDir);
   });
 
   it('should parse --phase all', () => {
-    const result = parseArgs(['--phase', 'all']);
+    const result = parseArgs(['--phase', 'all', '--run-dir', validRunDir]);
     expect(result.phase).toBe('all');
+    expect(result.runDir).toBe(validRunDir);
   });
 
   it('should throw for invalid phase', () => {
@@ -65,9 +68,18 @@ describe('parseArgs', () => {
     expect(() => parseArgs(['--phase', 'pre'])).not.toThrow();
   });
 
+  it('should require --run-dir for all phase', () => {
+    expect(() => parseArgs(['--phase', 'all'])).toThrow('--phase all requires --run-dir');
+  });
+
+  it('should validate run-dir naming for post/all phases', () => {
+    expect(() => parseArgs(['--phase', 'post', '--run-dir', '/tmp/not-a-run'])).toThrow('Expected folder name format');
+    expect(() => parseArgs(['--phase', 'all', '--run-dir', '/tmp/not-a-run'])).toThrow('Expected folder name format');
+  });
+
   it('should parse --run-dir', () => {
-    const result = parseArgs(['--phase', 'post', '--run-dir', '/path/to/run']);
-    expect(result.runDir).toBe('/path/to/run');
+    const result = parseArgs(['--phase', 'post', '--run-dir', validRunDir]);
+    expect(result.runDir).toBe(validRunDir);
   });
 
   it('should parse --dry-run', () => {
@@ -81,8 +93,9 @@ describe('parseArgs', () => {
   });
 
   it('should parse combined args', () => {
-    const result = parseArgs(['--phase', 'all', '--dry-run', '--env-file', '.env.local']);
+    const result = parseArgs(['--phase', 'all', '--run-dir', validRunDir, '--dry-run', '--env-file', '.env.local']);
     expect(result.phase).toBe('all');
+    expect(result.runDir).toBe(validRunDir);
     expect(result.dryRun).toBe(true);
     expect(result.envFile).toBe('.env.local');
   });
@@ -91,11 +104,11 @@ describe('parseArgs', () => {
 describe('createRunDir', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    process.env.JOB_HARVESTER_WORK_DIR = 'C:\\data';
+    process.env.JOB_HARVESTER_ROOT_WORK_DIR = 'C:\\data';
   });
 
   afterEach(() => {
-    delete process.env.JOB_HARVESTER_WORK_DIR;
+    delete process.env.JOB_HARVESTER_ROOT_WORK_DIR;
   });
 
   it('should create directory with timestamp format', async () => {
@@ -117,6 +130,15 @@ describe('createRunDir', () => {
 
     const callArg = mockedFs.mkdir.mock.calls[0]?.[0] as string;
     expect(callArg.includes('data')).toBe(true);
+  });
+
+  it('should throw migration error when only legacy env var is set', async () => {
+    delete process.env.JOB_HARVESTER_ROOT_WORK_DIR;
+    process.env.JOB_HARVESTER_WORK_DIR = 'C:\\legacy-data';
+
+    await expect(createRunDir()).rejects.toThrow('JOB_HARVESTER_WORK_DIR has been renamed to JOB_HARVESTER_ROOT_WORK_DIR');
+
+    delete process.env.JOB_HARVESTER_WORK_DIR;
   });
 });
 

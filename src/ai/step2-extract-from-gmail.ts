@@ -10,11 +10,7 @@ import {
   normalizeHttpUrl,
   parseExtractedCandidates,
 } from './validators';
-
-interface CliArgs {
-  runDir: string | undefined;
-  envFile: string | undefined;
-}
+import { resolveRequiredRunDirFromCli } from '../utils/run-dir';
 
 interface GmailEmail {
   id: string;
@@ -41,43 +37,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
-}
-
-export function parseArgs(args: string[]): CliArgs {
-  const result: CliArgs = {
-    runDir: undefined,
-    envFile: undefined,
-  };
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === '--run-dir' && i + 1 < args.length) {
-      result.runDir = args[i + 1];
-      i++;
-      continue;
-    }
-
-    if (arg === '--env-file' && i + 1 < args.length) {
-      result.envFile = args[i + 1];
-      i++;
-    }
-  }
-
-  return result;
-}
-
-function resolveRunDir(args: CliArgs): string {
-  const fromCli = args.runDir ?? '';
-  if (fromCli !== '') {
-    return fromCli;
-  }
-
-  const fromEnv = process.env.JOB_HARVESTER_WORK_DIR ?? '';
-  if (fromEnv !== '') {
-    return fromEnv;
-  }
-
-  throw new Error('--run-dir is required (or set JOB_HARVESTER_WORK_DIR)');
 }
 
 function getPrimaryGmailIndexFile(runDir: string): string {
@@ -491,10 +450,10 @@ export async function runStep2(runDir: string): Promise<Step2Result> {
   return result;
 }
 
-export async function main(): Promise<void> {
-  await loadEnvFileIfProvided(process.argv.slice(2));
-  const args = parseArgs(process.argv.slice(2));
-  const runDir = resolveRunDir(args);
+export async function main(runDirArg?: string): Promise<void> {
+  const argv = process.argv.slice(2);
+  await loadEnvFileIfProvided(argv);
+  const runDir = runDirArg ?? await resolveRequiredRunDirFromCli(argv);
 
   logger.info('Starting AI Step 1: extract jobs from Gmail index');
   const result = await runStep2(runDir);

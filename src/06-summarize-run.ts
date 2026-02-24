@@ -4,10 +4,7 @@ import type { CompiledJob, DiscoveryOutput, FetchOutput, FilterVerdict, JobSpec,
 import * as logger from './utils/logger';
 import { loadEnvFileIfProvided } from './utils/env-loader';
 import { requestOpenRouterChat } from './ai/openrouter-client';
-
-interface CliArgs {
-  runDir: string | undefined;
-}
+import { resolveRequiredRunDirFromCli } from './utils/run-dir';
 
 interface RunFacts {
   runDir: string;
@@ -28,26 +25,6 @@ interface SummaryResult {
   summaryLogFile: string;
   reviewJobsFile: string;
   metadataFile: string;
-}
-
-function parseArgs(args: string[]): CliArgs {
-  const parsed: CliArgs = { runDir: undefined };
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === '--run-dir' && i + 1 < args.length) {
-      parsed.runDir = args[i + 1];
-      i++;
-    }
-  }
-  return parsed;
-}
-
-function resolveRunDir(args: CliArgs): string {
-  const runDir = args.runDir ?? process.env.JOB_HARVESTER_WORK_DIR;
-  if (runDir === undefined || runDir === '') {
-    throw new Error('--run-dir is required (or set JOB_HARVESTER_WORK_DIR)');
-  }
-  return runDir;
 }
 
 function getRunSummaryDir(runDir: string): string {
@@ -206,10 +183,10 @@ export async function runSummarize(runDir: string): Promise<SummaryResult> {
   };
 }
 
-export async function main(): Promise<void> {
-  await loadEnvFileIfProvided(process.argv.slice(2));
-  const args = parseArgs(process.argv.slice(2));
-  const runDir = resolveRunDir(args);
+export async function main(runDirArg?: string): Promise<void> {
+  const argv = process.argv.slice(2);
+  await loadEnvFileIfProvided(argv);
+  const runDir = runDirArg ?? await resolveRequiredRunDirFromCli(argv);
   logger.info('Starting run summary generation...');
   const result = await runSummarize(runDir);
   logger.success('Run summary generation complete');
@@ -224,4 +201,3 @@ if (require.main === module) {
     process.exit(1);
   });
 }
-
