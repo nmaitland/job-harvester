@@ -1,5 +1,5 @@
 /**
- * 04-compile-results.ts — Compile Results
+ * 06-compile-results.ts — Compile Results
  * 
  * Merges AI verdict files with pre-filter survivors to produce the final PASS/REVIEW/REJECT split.
  * Pure logic — no external API calls.

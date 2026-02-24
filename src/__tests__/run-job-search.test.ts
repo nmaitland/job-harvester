@@ -6,7 +6,7 @@ import * as fs from 'fs/promises';
 import {
   parseArgs,
   createRunDir,
-  validatePostPhase,
+  validateOutputPhase,
   writeRunManifest,
 } from '../run-job-search';
 
@@ -32,54 +32,47 @@ const mockedFs = fs as jest.Mocked<typeof fs>;
 describe('parseArgs', () => {
   const validRunDir = '/tmp/run-2026-02-24-10-00-00';
 
-  it('should default to pre phase', () => {
+  it('should default to all phase', () => {
     const result = parseArgs([]);
-    expect(result.phase).toBe('pre');
+    expect(result.phase).toBe('all');
     expect(result.runDir).toBeUndefined();
     expect(result.dryRun).toBe(false);
   });
 
-  it('should parse --phase pre', () => {
-    const result = parseArgs(['--phase', 'pre']);
-    expect(result.phase).toBe('pre');
-  });
-
-  it('should parse --phase post', () => {
-    const result = parseArgs(['--phase', 'post', '--run-dir', validRunDir]);
-    expect(result.phase).toBe('post');
-    expect(result.runDir).toBe(validRunDir);
-  });
-
   it('should parse --phase all', () => {
-    const result = parseArgs(['--phase', 'all', '--run-dir', validRunDir]);
+    const result = parseArgs(['--phase', 'all']);
     expect(result.phase).toBe('all');
-    expect(result.runDir).toBe(validRunDir);
+  });
+
+  it('should parse --phase discovery', () => {
+    const result = parseArgs(['--phase', 'discovery', '--run-dir', validRunDir]);
+    expect(result.phase).toBe('discovery');
+  });
+
+  it('should parse --phase email-processing', () => {
+    const result = parseArgs(['--phase', 'email-processing', '--run-dir', validRunDir]);
+    expect(result.phase).toBe('email-processing');
   });
 
   it('should throw for invalid phase', () => {
     expect(() => parseArgs(['--phase', 'invalid'])).toThrow('Invalid phase');
   });
 
-  it('should require --run-dir for post phase', () => {
-    expect(() => parseArgs(['--phase', 'post'])).toThrow('--phase post requires --run-dir');
+  it('should allow all phase without --run-dir', () => {
+    expect(() => parseArgs(['--phase', 'all'])).not.toThrow();
   });
 
-  it('should allow pre phase without --run-dir', () => {
-    expect(() => parseArgs(['--phase', 'pre'])).not.toThrow();
+  it('should require --run-dir for partial phases', () => {
+    expect(() => parseArgs(['--phase', 'discovery'])).toThrow('--phase discovery requires --run-dir');
+    expect(() => parseArgs(['--phase', 'email-processing'])).toThrow('--phase email-processing requires --run-dir');
+    expect(() => parseArgs(['--phase', 'fetch-and-filter'])).toThrow('--phase fetch-and-filter requires --run-dir');
+    expect(() => parseArgs(['--phase', 'scoring'])).toThrow('--phase scoring requires --run-dir');
+    expect(() => parseArgs(['--phase', 'output'])).toThrow('--phase output requires --run-dir');
   });
 
-  it('should require --run-dir for all phase', () => {
-    expect(() => parseArgs(['--phase', 'all'])).toThrow('--phase all requires --run-dir');
-  });
-
-  it('should validate run-dir naming for post/all phases', () => {
-    expect(() => parseArgs(['--phase', 'post', '--run-dir', '/tmp/not-a-run'])).toThrow('Expected folder name format');
+  it('should validate run-dir naming for all phases when provided', () => {
     expect(() => parseArgs(['--phase', 'all', '--run-dir', '/tmp/not-a-run'])).toThrow('Expected folder name format');
-  });
-
-  it('should parse --run-dir', () => {
-    const result = parseArgs(['--phase', 'post', '--run-dir', validRunDir]);
-    expect(result.runDir).toBe(validRunDir);
+    expect(() => parseArgs(['--phase', 'output', '--run-dir', '/tmp/not-a-run'])).toThrow('Expected folder name format');
   });
 
   it('should parse --dry-run', () => {
@@ -142,7 +135,7 @@ describe('createRunDir', () => {
   });
 });
 
-describe('validatePostPhase', () => {
+describe('validateOutputPhase', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -150,7 +143,7 @@ describe('validatePostPhase', () => {
   it('should throw if pre-filter-survivors.json missing', async () => {
     mockedFs.access.mockRejectedValue(new Error('File not found'));
 
-    await expect(validatePostPhase('/run/123')).rejects.toThrow(
+    await expect(validateOutputPhase('/run/123')).rejects.toThrow(
       'Pre-filter survivors file not found'
     );
   });
@@ -159,7 +152,7 @@ describe('validatePostPhase', () => {
     mockedFs.access.mockResolvedValue(undefined);
     mockedFs.readdir.mockRejectedValue(new Error('Directory not found'));
 
-    await expect(validatePostPhase('/run/123')).rejects.toThrow(
+    await expect(validateOutputPhase('/run/123')).rejects.toThrow(
       'Job scores directory not found'
     );
   });
@@ -168,7 +161,7 @@ describe('validatePostPhase', () => {
     mockedFs.access.mockResolvedValue(undefined);
     mockedFs.readdir.mockResolvedValue([]);
 
-    await expect(validatePostPhase('/run/123')).rejects.toThrow(
+    await expect(validateOutputPhase('/run/123')).rejects.toThrow(
       'No job score files found'
     );
   });
@@ -177,14 +170,14 @@ describe('validatePostPhase', () => {
     mockedFs.access.mockResolvedValue(undefined);
     mockedFs.readdir.mockResolvedValue(['score1.json', 'score2.json'] as any);
 
-    await expect(validatePostPhase('/run/123')).resolves.not.toThrow();
+    await expect(validateOutputPhase('/run/123')).resolves.not.toThrow();
   });
 
   it('should only check .json files in job-scores', async () => {
     mockedFs.access.mockResolvedValue(undefined);
     mockedFs.readdir.mockResolvedValue(['readme.txt', 'score.json'] as any);
 
-    await expect(validatePostPhase('/run/123')).resolves.not.toThrow();
+    await expect(validateOutputPhase('/run/123')).resolves.not.toThrow();
   });
 });
 
@@ -196,7 +189,7 @@ describe('writeRunManifest', () => {
   it('should write manifest with correct structure', async () => {
     mockedFs.writeFile.mockResolvedValue(undefined);
 
-    await writeRunManifest('/run/123', 'pre');
+    await writeRunManifest('/run/123', 'all');
 
     expect(mockedFs.writeFile).toHaveBeenCalled();
     const writeCall = mockedFs.writeFile.mock.calls[0];
@@ -207,7 +200,7 @@ describe('writeRunManifest', () => {
 
     const manifest = JSON.parse(content);
     expect(manifest.runDir.includes('run')).toBe(true);
-    expect(manifest.phase).toBe('pre');
+    expect(manifest.phase).toBe('all');
     expect(manifest.files).toBeDefined();
   });
 
@@ -235,26 +228,26 @@ describe('writeRunManifest', () => {
   it('should set correct ownership for each file', async () => {
     mockedFs.writeFile.mockResolvedValue(undefined);
 
-    await writeRunManifest('/run/123', 'pre');
+    await writeRunManifest('/run/123', 'all');
 
     const writeCall = mockedFs.writeFile.mock.calls[0];
     const content = writeCall?.[1] as string;
     const manifest = JSON.parse(content);
 
     expect(manifest.files['discovered-jobs.json'].owner).toBe('01-discover.ts');
-    expect(manifest.files['fetched-specs.json'].owner).toBe('02-fetch-specs.ts');
-    expect(manifest.files['pre-filter-survivors.json'].owner).toBe('03-prefilter.ts');
-    expect(manifest.files['job-scores/*.json'].owner).toBe('AI');
-    expect(manifest.files['compile-results.json'].owner).toBe('04-compile-results.ts');
-    expect(manifest.files['pdfs/*.pdf'].owner).toBe('05-generate-pdfs.ts');
-    expect(manifest.files['run-summary/*.txt'].owner).toBe('06-summarize-run.ts');
-    expect(manifest.files['upload-results.json'].owner).toBe('07-upload.ts');
+    expect(manifest.files['fetched-specs.json'].owner).toBe('03-fetch-specs.ts');
+    expect(manifest.files['pre-filter-survivors.json'].owner).toBe('04-prefilter.ts');
+    expect(manifest.files['job-scores/*.json'].owner).toBe('05-score-survivors.ts');
+    expect(manifest.files['compile-results.json'].owner).toBe('06-compile-results.ts');
+    expect(manifest.files['pdfs/*.pdf'].owner).toBe('07-generate-pdfs.ts');
+    expect(manifest.files['run-summary/*.txt'].owner).toBe('08-summarize-run.ts');
+    expect(manifest.files['upload-results.json'].owner).toBe('09-upload.ts');
   });
 
   it('should set correct AI permissions', async () => {
     mockedFs.writeFile.mockResolvedValue(undefined);
 
-    await writeRunManifest('/run/123', 'pre');
+    await writeRunManifest('/run/123', 'all');
 
     const writeCall = mockedFs.writeFile.mock.calls[0];
     const content = writeCall?.[1] as string;

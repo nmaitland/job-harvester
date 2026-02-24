@@ -1,5 +1,5 @@
 /**
- * 03-prefilter.ts — Deterministic Pre-Filters
+ * 04-prefilter.ts — Deterministic Pre-Filters
  * 
  * Applies fast, deterministic filters to fetched job specs before expensive AI scoring.
  * Pure logic — no external API calls.

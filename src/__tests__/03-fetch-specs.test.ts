@@ -1,5 +1,5 @@
 /**
- * Tests for 02-fetch-specs.ts
+ * Tests for 03-fetch-specs.ts
  */
 
 import {
@@ -8,7 +8,7 @@ import {
   extractLinkedInText,
   extractJobAgentText,
   extractWellfoundText,
-} from '../02-fetch-specs';
+} from '../03-fetch-specs';
 import type { DiscoveredJob } from '../types';
 
 // Mock fetch globally

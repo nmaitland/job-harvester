@@ -4,34 +4,31 @@ A TypeScript pipeline for automated job search. Discovers jobs from multiple sou
 
 ## Architecture
 
-The pipeline consists of 7 standalone scripts that can be run independently or orchestrated together:
+The pipeline consists of 9 standalone scripts that can be run independently or orchestrated together:
 
-1. **01-discover.ts** - Discovers jobs from Gmail, LinkedIn, and Brave Search
-2. **02-fetch-specs.ts** - Fetches full job specifications using Brightdata API and Playwright
-3. **03-prefilter.ts** - Applies deterministic filters (fetch_failed, already_applied, already_sent, junior_role)
-4. **04-compile-results.ts** - Merges AI scores with pre-filter results, applies thresholds
-5. **05-generate-pdfs.ts** - Generates PDFs from job specifications using Playwright
-6. **06-summarize-run.ts** - Builds human-readable run summary files (AI narrative with deterministic fallback)
-7. **07-upload.ts** - Uploads PDFs and summary artifacts to OneDrive and Google Drive archive folders
-
-AI helper scripts for manual AI handoff steps:
-
-- `src/ai/step2-extract-from-gmail.ts` - Reads `RUN_DIR/emails/gmail/index.json` (or fallback `RUN_DIR/emails/index.json`), extracts job URLs via OpenRouter, appends deduplicated Gmail jobs into `RUN_DIR/discovered-jobs.json`
-- `src/ai/step4-score-survivors.ts` - Scores `RUN_DIR/pre-filter-survivors.json` against `jobs/cv-keywords.md` via OpenRouter and writes one verdict JSON per survivor into `RUN_DIR/job-scores`
+1. **01-discover.ts** - Discovery from web and inbox sources (Brave, LinkedIn, Gmail download)
+2. **02-extract-from-emails.ts** - Email processing via OpenRouter to extract additional job URLs from downloaded email content
+3. **03-fetch-specs.ts** - Fetches full job specifications using Brightdata API and Playwright
+4. **04-prefilter.ts** - Applies deterministic filters (fetch_failed, already_applied, already_sent, junior_role)
+5. **05-score-survivors.ts** - Scores pre-filter survivors via OpenRouter and writes verdict JSON files
+6. **06-compile-results.ts** - Merges AI scores with pre-filter results, applies thresholds
+7. **07-generate-pdfs.ts** - Generates PDFs from job specifications using Playwright
+8. **08-summarize-run.ts** - Builds human-readable run summary files (AI narrative with deterministic fallback)
+9. **09-upload.ts** - Uploads PDFs and summary artifacts to OneDrive and Google Drive archive folders
 
 ## File Ownership
 
 | File | Written By | Read By |
 |------|-----------|---------|
-| `discovered-jobs.json` | 01-discover.ts | 02-fetch-specs.ts |
-| `fetched-specs.json` | 02-fetch-specs.ts | 03-prefilter.ts |
-| `pre-filter-survivors.json` | 03-prefilter.ts | 04-compile-results.ts, AI |
-| `pre-filter-rejections.json` | 03-prefilter.ts | 04-compile-results.ts |
-| `job-scores/*.json` | AI | 04-compile-results.ts |
-| `compile-results.json` | 04-compile-results.ts | 05-generate-pdfs.ts |
-| `all-rejections.json` | 04-compile-results.ts | - |
-| `pdfs/*.pdf` | 05-generate-pdfs.ts | 07-upload.ts |
-| `run-summary/*.txt` | 06-summarize-run.ts | 07-upload.ts |
+| `discovered-jobs.json` | 01-discover.ts (appended by 02-extract-from-emails.ts) | 03-fetch-specs.ts |
+| `fetched-specs.json` | 03-fetch-specs.ts | 04-prefilter.ts |
+| `pre-filter-survivors.json` | 04-prefilter.ts | 05-score-survivors.ts, 06-compile-results.ts |
+| `pre-filter-rejections.json` | 04-prefilter.ts | 06-compile-results.ts |
+| `job-scores/*.json` | 05-score-survivors.ts | 06-compile-results.ts |
+| `compile-results.json` | 06-compile-results.ts | 07-generate-pdfs.ts |
+| `all-rejections.json` | 06-compile-results.ts | - |
+| `pdfs/*.pdf` | 07-generate-pdfs.ts | 09-upload.ts |
+| `run-summary/*.txt` | 08-summarize-run.ts | 09-upload.ts |
 
 ## Installation
 
@@ -52,10 +49,10 @@ GOOGLE_SERVICE_ACCOUNT_KEY={"type":"service_account","project_id":"...","private
 GOOGLE_GMAIL_IMPERSONATED_USER=mailbox-user@your-domain.com
 GOOGLE_DRIVE_IMPERSONATED_USER=drive-user@your-domain.com
 
-# OneDrive (07-upload.ts expects an access token)
+# OneDrive (09-upload.ts expects an access token)
 ONEDRIVE_ACCESS_TOKEN=your_access_token
 
-# OpenRouter (AI Step 1 + AI Step 2 helper scripts)
+# OpenRouter (02-extract-from-emails + 05-score-survivors)
 OPENROUTER_API_KEY=your_openrouter_api_key
 OPENROUTER_MODEL=your/model-path
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
@@ -77,15 +74,15 @@ JOB_HARVESTER_MANAGEMENT_DATA_DIR=.
 Notes:
 
 - Gmail discovery in [`main()`](src/01-discover.ts:549) is skipped when [`GOOGLE_SERVICE_ACCOUNT_KEY`](README.md) or [`GOOGLE_GMAIL_IMPERSONATED_USER`](README.md) is unset/empty.
-- OneDrive upload in [`main()`](src/07-upload.ts:346) is skipped when [`ONEDRIVE_ACCESS_TOKEN`](README.md) is unset/empty.
-- Google Drive upload in [`uploadPdfsToGoogleDrive()`](src/07-upload.ts:188) is skipped when [`GOOGLE_SERVICE_ACCOUNT_KEY`](README.md), [`GOOGLE_DRIVE_IMPERSONATED_USER`](README.md), or [`GOOGLE_DRIVE_FOLDER_ID`](README.md) is unset/empty.
+- OneDrive upload in [`main()`](src/09-upload.ts:346) is skipped when [`ONEDRIVE_ACCESS_TOKEN`](README.md) is unset/empty.
+- Google Drive upload in [`uploadPdfsToGoogleDrive()`](src/09-upload.ts:188) is skipped when [`GOOGLE_SERVICE_ACCOUNT_KEY`](README.md), [`GOOGLE_DRIVE_IMPERSONATED_USER`](README.md), or [`GOOGLE_DRIVE_FOLDER_ID`](README.md) is unset/empty.
 - Gmail read-state behavior is controlled by [`GMAIL_MARK_AS_READ`](README.md) (`true` by default).
 - [`JOB_HARVESTER_ROOT_WORK_DIR`](README.md) is required by the orchestrator and is used to create unique run folders (`run-YYYY-MM-DD-HH-mm-ss`).
 - Standalone stage scripts never use root env fallback for run outputs; they require [`--run-dir`](README.md).
 - [`JOB_HARVESTER_MANAGEMENT_DATA_DIR`](README.md) controls operator-managed files (`applied-companies.txt`, `cv-keywords.md`, `job-search-processed.json`).
 - OpenRouter scripts require [`OPENROUTER_API_KEY`](README.md) and [`OPENROUTER_MODEL`](README.md).
 - Parallel batch size for AI calls is controlled by [`OPENROUTER_STEP2_BATCH_CONCURRENCY`](README.md) and [`OPENROUTER_STEP4_BATCH_CONCURRENCY`](README.md).
-- AI Step 2 scoring script fails fast if [`jobs/cv-keywords.md`](jobs/cv-keywords.md) is missing under [`JOB_HARVESTER_MANAGEMENT_DATA_DIR`](README.md).
+- `05-score-survivors.ts` fails fast if [`jobs/cv-keywords.md`](jobs/cv-keywords.md) is missing under [`JOB_HARVESTER_MANAGEMENT_DATA_DIR`](README.md).
 - Run summary output files are written to `RUN_DIR/run-summary/summary-log.txt` and `RUN_DIR/run-summary/review-jobs.txt`.
 - Cloud uploads are grouped by run using `archive-<run-timestamp>` folder names in both OneDrive and Google Drive.
 
@@ -106,63 +103,59 @@ All standalone stage scripts require [`--run-dir`](README.md) pointing to an exi
 
 ```bash
 npm run discover        # Run discovery phase
+npm run extract-from-emails # Extract extra jobs from downloaded emails
 npm run fetch-specs     # Fetch job specifications
 npm run prefilter       # Run pre-filter
+npm run score-survivors # Score survivors with AI
 npm run compile         # Compile results
 npm run generate-pdfs   # Generate PDFs
 npm run summarize       # Build human-readable run summary files
 npm run upload          # Upload to cloud storage
-npm run ai:step2        # AI Step 1: extract jobs from Gmail index
-npm run ai:step4        # AI Step 2: score pre-filter survivors
 ```
 
 Each script supports `--env-file` (file values override existing process env):
 
 ```bash
 npm run dev:discover -- --env-file .env.dev
+npm run dev:extract-from-emails -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
 npm run dev:fetch-specs -- --env-file .env.dev
 npm run dev:prefilter -- --env-file .env.dev
+npm run dev:score-survivors -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
 npm run dev:compile -- --env-file .env.dev
 npm run dev:generate-pdfs -- --env-file .env.dev
 npm run dev:summarize -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
 npm run dev:upload -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
-npm run dev:ai-step2 -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
-npm run dev:ai-step4 -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
 ```
 
 Example with explicit run dir:
 
 ```bash
 npm run dev:discover -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
+npm run dev:extract-from-emails -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
 npm run dev:fetch-specs -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
 npm run dev:prefilter -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
+npm run dev:score-survivors -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
 npm run dev:compile -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
 npm run dev:generate-pdfs -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
 npm run dev:summarize -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
 npm run dev:upload -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
 ```
 
-### AI handoff sequence for pre/post orchestrator phases
+### Fully automated orchestrator flow (no manual AI handoff)
 
 ```bash
-# 1) Run pre phase to generate run dir inputs
-npm run dev:run -- --phase pre --env-file .env.dev
+# Default: creates a new run directory and executes every stage end-to-end
+npm run run -- --env-file .env.dev
 
-# 2) AI Step 1 - extract additional jobs from Gmail index into discovered-jobs.json
-npm run dev:ai-step2 -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
-
-# 3) Continue deterministic pipeline stages if needed
-npm run dev:fetch-specs -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
-npm run dev:prefilter -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
-
-# 4) AI Step 2 - score survivors and write job-scores/*.json
-npm run dev:ai-step4 -- --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
-
-# 5) Complete post phase
-npm run dev:run -- --phase post --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
+# Optional partial phase reruns for an existing run directory
+npm run dev:run -- --phase discovery --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
+npm run dev:run -- --phase email-processing --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
+npm run dev:run -- --phase fetch-and-filter --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
+npm run dev:run -- --phase scoring --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
+npm run dev:run -- --phase output --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
 ```
 
-Post phase now runs in this order:
+`--phase output` runs in this order:
 
 1. compile results
 2. generate PDFs (filename format: `YYYY-MM-DD-S{score}-{company}-advert.pdf`)
@@ -174,7 +167,7 @@ Cloud upload structure per run:
 - OneDrive path: `JobSpecs/archive-<run-timestamp>/...`
 - Google Drive: created subfolder `archive-<run-timestamp>` under `GOOGLE_DRIVE_FOLDER_ID`
 
-### Run summary process (`06-summarize-run.ts`)
+### Run summary process (`08-summarize-run.ts`)
 
 The summary step reads run artifacts and produces two human-readable text files:
 
@@ -210,8 +203,8 @@ npm run run             # Run full pipeline
 Orchestrator also supports `--env-file`:
 
 ```bash
-npm run dev:run -- --phase pre --env-file .env.dev
-npm run dev:run -- --phase post --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
+npm run dev:run -- --env-file .env.dev
+npm run dev:run -- --phase output --run-dir ./data/run-YYYY-MM-DD-HH-mm-ss --env-file .env.dev
 ```
 
 ## Testing
@@ -241,12 +234,14 @@ npx tsc --noEmit        # Type check without emitting
 job-harvester/
 ├── src/
 │   ├── 01-discover.ts          # Discovery script
-│   ├── 02-fetch-specs.ts       # Fetch job specs
-│   ├── 03-prefilter.ts         # Pre-filter script
-│   ├── 04-compile-results.ts   # Compile results
-│   ├── 05-generate-pdfs.ts     # PDF generation
-│   ├── 06-summarize-run.ts     # Run summary generation
-│   ├── 07-upload.ts            # Upload script
+│   ├── 02-extract-from-emails.ts # Email processing
+│   ├── 03-fetch-specs.ts       # Fetch job specs
+│   ├── 04-prefilter.ts         # Pre-filter script
+│   ├── 05-score-survivors.ts   # AI scoring
+│   ├── 06-compile-results.ts   # Compile results
+│   ├── 07-generate-pdfs.ts     # PDF generation
+│   ├── 08-summarize-run.ts     # Run summary generation
+│   ├── 09-upload.ts            # Upload script
 │   ├── run-job-search.ts       # Orchestrator
 │   ├── types.ts                # Shared TypeScript types
 │   ├── config.ts               # Configuration constants

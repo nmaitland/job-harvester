@@ -11,7 +11,7 @@ describe('pipeline stage handoff e2e', () => {
     jest.resetModules();
   });
 
-  it('runs 03-prefilter main against 02-fetch-specs output shape', async () => {
+  it('runs 04-prefilter main against 03-fetch-specs output shape', async () => {
     const runDir = await createTempRunDir();
 
     const fetchedSpecs = {
@@ -35,7 +35,7 @@ describe('pipeline stage handoff e2e', () => {
 
     await fs.writeFile(path.join(runDir, 'fetched-specs.json'), JSON.stringify(fetchedSpecs), 'utf-8');
 
-    const module = await import('../03-prefilter');
+    const module = await import('../04-prefilter');
     await module.main(runDir);
 
     const survivorsContent = await fs.readFile(path.join(runDir, 'pre-filter-survivors.json'), 'utf-8');
@@ -85,7 +85,7 @@ describe('pipeline stage handoff e2e', () => {
       'utf-8'
     );
 
-    const compileModule = await import('../04-compile-results');
+    const compileModule = await import('../06-compile-results');
     await compileModule.main(runDir);
 
     const compileContent = await fs.readFile(path.join(runDir, 'compile-results.json'), 'utf-8');
@@ -95,7 +95,7 @@ describe('pipeline stage handoff e2e', () => {
     const compiledJob = compileJson.jobs.find(job => job.company === 'Compile Company E2E');
     expect(compiledJob?.specText).toContain('must survive compile');
 
-    const uploadModule = await import('../07-upload');
+    const uploadModule = await import('../09-upload');
     await uploadModule.main(runDir);
 
     const uploadResultsPath = path.join(runDir, 'upload-results.json');

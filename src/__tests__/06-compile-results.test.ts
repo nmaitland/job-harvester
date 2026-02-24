@@ -1,5 +1,5 @@
 /**
- * Tests for 04-compile-results.ts
+ * Tests for 06-compile-results.ts
  */
 
 import * as fs from 'fs/promises';
@@ -8,7 +8,7 @@ import {
   applyThreshold,
   findVerdictFile,
   readJobScore,
-} from '../04-compile-results';
+} from '../06-compile-results';
 import type { JobScore } from '../types';
 
 // Mock fs/promises

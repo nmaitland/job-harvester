@@ -1,5 +1,5 @@
 /**
- * Tests for 03-prefilter.ts
+ * Tests for 04-prefilter.ts
  */
 
 import * as fs from 'fs/promises';
@@ -11,7 +11,7 @@ import {
   isJuniorRole,
   applyFilters,
   runPreFilter,
-} from '../03-prefilter';
+} from '../04-prefilter';
 import type { JobSpec } from '../types';
 
 // Mock fs/promises

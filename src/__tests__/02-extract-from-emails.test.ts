@@ -1,5 +1,5 @@
 import type { DiscoveredJob } from '../types';
-import { mergeCandidatesIntoDiscovered } from '../ai/step2-extract-from-gmail';
+import { mergeCandidatesIntoDiscovered } from '../02-extract-from-emails';
 import type { ExtractedJobCandidate } from '../ai/validators';
 
 describe('mergeCandidatesIntoDiscovered', () => {
@@ -59,4 +59,3 @@ describe('mergeCandidatesIntoDiscovered', () => {
     expect(result.invalidUrls).toBe(1);
   });
 });
-

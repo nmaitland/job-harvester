@@ -1,4 +1,4 @@
-import { normalizeUrl } from '../03-prefilter';
+import { normalizeUrl } from '../04-prefilter';
 
 export type ScoreVerdict = 'PASS' | 'REVIEW' | 'REJECT';
 

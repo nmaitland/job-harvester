@@ -26,7 +26,7 @@ export interface DiscoveryOutput {
 }
 
 // ============================================================================
-// Fetch Specs Phase Types (02-fetch-specs.ts)
+// Fetch Specs Phase Types (03-fetch-specs.ts)
 // ============================================================================
 
 export interface JobSpec {
@@ -53,7 +53,7 @@ export interface FetchOutput {
 }
 
 // ============================================================================
-// Pre-filter Phase Types (03-prefilter.ts)
+// Pre-filter Phase Types (04-prefilter.ts)
 // ============================================================================
 
 export type RejectionReason =
@@ -108,7 +108,7 @@ export interface ScoringOutput {
 }
 
 // ============================================================================
-// Compile Results Phase Types (04-compile-results.ts)
+// Compile Results Phase Types (06-compile-results.ts)
 // ============================================================================
 
 export interface CompiledJob {
@@ -136,7 +136,7 @@ export interface CompileOutput {
 }
 
 // ============================================================================
-// PDF Generation Types (05-generate-pdfs.ts)
+// PDF Generation Types (07-generate-pdfs.ts)
 // ============================================================================
 
 export interface PDFResult {
@@ -158,7 +158,7 @@ export interface PDFOutput {
 }
 
 // ============================================================================
-// Run Summary Types (06-summarize-run.ts)
+// Run Summary Types (08-summarize-run.ts)
 // ============================================================================
 
 export interface RunSummaryOutput {
@@ -171,7 +171,7 @@ export interface RunSummaryOutput {
 }
 
 // ============================================================================
-// Upload Types (07-upload.ts)
+// Upload Types (09-upload.ts)
 // ============================================================================
 
 export interface UploadResult {
