@@ -20,6 +20,8 @@
     "compile": "node dist/04-compile-results.js",
     "generate-pdfs": "node dist/05-generate-pdfs.js",
     "upload": "node dist/06-upload.js",
+    "ai:step2": "node dist/ai/step2-extract-from-gmail.js",
+    "ai:step4": "node dist/ai/step4-score-survivors.js",
     "run": "node dist/run-job-search.js",
     "dev:discover": "ts-node src/01-discover.ts",
     "dev:fetch-specs": "ts-node src/02-fetch-specs.ts",
@@ -28,6 +30,8 @@
     "dev:compile-results": "ts-node src/04-compile-results.ts",
     "dev:generate-pdfs": "ts-node src/05-generate-pdfs.ts",
     "dev:upload": "ts-node src/06-upload.ts",
+    "dev:ai-step2": "ts-node src/ai/step2-extract-from-gmail.ts",
+    "dev:ai-step4": "ts-node src/ai/step4-score-survivors.ts",
     "dev:run": "ts-node src/run-job-search.ts",
     "dev:google-oauth-bootstrap": "ts-node src/google-oauth-bootstrap.ts"
   },

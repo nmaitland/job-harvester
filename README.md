@@ -13,6 +13,11 @@ The pipeline consists of 6 standalone scripts that can be run independently or o
 5. **05-generate-pdfs.ts** - Generates PDFs from job specifications using Playwright
 6. **06-upload.ts** - Uploads PDFs to OneDrive and Google Drive
 
+AI helper scripts for manual AI handoff steps:
+
+- `src/ai/step2-extract-from-gmail.ts` - Reads `RUN_DIR/emails/gmail/index.json` (or fallback `RUN_DIR/emails/index.json`), extracts job URLs via OpenRouter, appends deduplicated Gmail jobs into `RUN_DIR/discovered-jobs.json`
+- `src/ai/step4-score-survivors.ts` - Scores `RUN_DIR/pre-filter-survivors.json` against `jobs/cv-keywords.md` via OpenRouter and writes one verdict JSON per survivor into `RUN_DIR/job-scores`
+
 ## File Ownership
 
 | File | Written By | Read By |
@@ -48,6 +53,17 @@ GOOGLE_DRIVE_IMPERSONATED_USER=drive-user@your-domain.com
 # OneDrive (06-upload.ts expects an access token)
 ONEDRIVE_ACCESS_TOKEN=your_access_token
 
+# OpenRouter (AI Step 1 + AI Step 2 helper scripts)
+OPENROUTER_API_KEY=your_openrouter_api_key
+OPENROUTER_MODEL=your/model-path
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_HTTP_REFERER=
+OPENROUTER_TITLE=job-harvester
+OPENROUTER_TIMEOUT_MS=90000
+OPENROUTER_MAX_RETRIES=2
+OPENROUTER_STEP2_BATCH_CONCURRENCY=3
+OPENROUTER_STEP4_BATCH_CONCURRENCY=3
+
 # Google Drive target
 GOOGLE_DRIVE_FOLDER_ID=your_folder_id
 
@@ -65,6 +81,9 @@ Notes:
 - Gmail read-state behavior is controlled by [`GMAIL_MARK_AS_READ`](README.md) (`true` by default).
 - [`JOB_HARVESTER_WORK_DIR`](README.md) is required and controls pipeline outputs (`discovered-jobs.json`, `fetched-specs.json`, `specs/`, `pdfs/`, etc.).
 - [`JOB_HARVESTER_MANAGEMENT_DATA_DIR`](README.md) controls operator-managed files (`applied-companies.txt`, `cv-keywords.md`, `job-search-processed.json`).
+- OpenRouter scripts require [`OPENROUTER_API_KEY`](README.md) and [`OPENROUTER_MODEL`](README.md).
+- Parallel batch size for AI calls is controlled by [`OPENROUTER_STEP2_BATCH_CONCURRENCY`](README.md) and [`OPENROUTER_STEP4_BATCH_CONCURRENCY`](README.md).
+- AI Step 2 scoring script fails fast if [`jobs/cv-keywords.md`](jobs/cv-keywords.md) is missing under [`JOB_HARVESTER_MANAGEMENT_DATA_DIR`](README.md).
 
 ## Usage
 
@@ -86,6 +105,8 @@ npm run prefilter       # Run pre-filter
 npm run compile         # Compile results
 npm run generate-pdfs   # Generate PDFs
 npm run upload          # Upload to cloud storage
+npm run ai:step2        # AI Step 1: extract jobs from Gmail index
+npm run ai:step4        # AI Step 2: score pre-filter survivors
 ```
 
 Each script supports `--env-file` (file values override existing process env):
@@ -97,6 +118,28 @@ npm run dev:prefilter -- --env-file .env.dev
 npm run dev:compile -- --env-file .env.dev
 npm run dev:generate-pdfs -- --env-file .env.dev
 npm run dev:upload -- --env-file .env.dev
+npm run dev:ai-step2 -- --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env.dev
+npm run dev:ai-step4 -- --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env.dev
+```
+
+### AI handoff sequence for pre/post orchestrator phases
+
+```bash
+# 1) Run pre phase to generate run dir inputs
+npm run dev:run -- --phase pre --env-file .env.dev
+
+# 2) AI Step 1 - extract additional jobs from Gmail index into discovered-jobs.json
+npm run dev:ai-step2 -- --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env.dev
+
+# 3) Continue deterministic pipeline stages if needed
+npm run dev:fetch-specs -- --env-file .env.dev
+npm run dev:prefilter -- --env-file .env.dev
+
+# 4) AI Step 2 - score survivors and write job-scores/*.json
+npm run dev:ai-step4 -- --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env.dev
+
+# 5) Complete post phase
+npm run dev:run -- --phase post --run-dir ./data/run-YYYY-MM-DD-HH-MM-SS --env-file .env.dev
 ```
 
 ### Run Full Pipeline

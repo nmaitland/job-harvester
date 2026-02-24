@@ -7,7 +7,6 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import * as glob from 'glob';
 import type { FilterVerdict, JobScore, CompiledJob, CompileOutput, RejectionReason, JobSpec } from './types';
 import { slugify } from './utils/slugify';
 import * as logger from './utils/logger';
@@ -58,34 +57,46 @@ function getAllRejectionsFile(): string {
 
 /**
  * Find AI verdict file for a job
- * First tries exact match, then falls back to glob
+ * First tries exact modern/legacy matches, then falls back to slug search.
  */
-export async function findVerdictFile(_jobId: string, company: string, scoresDir: string): Promise<string | null> {
-  const companySlug = slugify(company);
-  const today = new Date().toISOString().split('T')[0];
-  
-  // Try exact match first: {date}-{slug}.json
-  const exactPath = path.join(scoresDir, `${today}-${companySlug}.json`);
+export async function findVerdictFile(jobId: string, company: string, scoresDir: string): Promise<string | null> {
+  let jsonFiles: string[] = [];
   try {
-    await fs.access(exactPath);
-    return exactPath;
+    const files = await fs.readdir(scoresDir);
+    jsonFiles = files.filter(file => file.endsWith('.json'));
   } catch {
-    // Exact match not found, try glob
+    return null;
   }
-  
-  // Fallback: glob for any file containing the slug
-  const pattern = path.join(scoresDir, `*${companySlug}*.json`);
-  const matches = glob.sync(pattern);
-  
-  if (matches.length >= 1 && matches[0] !== undefined) {
-    if (matches.length > 1) {
-      logger.warn(`Multiple verdict files found for ${company}, using first: ${matches[0]}`);
+
+  const companySlug = slugify(company);
+  const jobSlug = slugify(jobId);
+  const today = new Date().toISOString().split('T')[0];
+
+  // Current format from AI step4: {date}-{companySlug}-{jobSlug}.json
+  const modernSuffix = `-${companySlug}-${jobSlug}.json`;
+  const modernMatch = jsonFiles.find(file => file.endsWith(modernSuffix));
+  if (modernMatch !== undefined) {
+    return path.join(scoresDir, modernMatch);
+  }
+
+  // Legacy format: {date}-{companySlug}.json
+  const legacyExact = `${today}-${companySlug}.json`;
+  if (jsonFiles.includes(legacyExact)) {
+    return path.join(scoresDir, legacyExact);
+  }
+
+  // Fallback: any score file containing the company slug
+  const companyMatches = jsonFiles.filter(file => file.includes(companySlug));
+  if (companyMatches.length >= 1 && companyMatches[0] !== undefined) {
+    const selected = companyMatches[0];
+    if (companyMatches.length > 1) {
+      logger.warn(`Multiple verdict files found for ${company}, using first: ${selected}`);
     } else {
-      logger.info(`Found verdict file via glob: ${matches[0]}`);
+      logger.info(`Found verdict file via slug fallback: ${selected}`);
     }
-    return matches[0];
+    return path.join(scoresDir, selected);
   }
-  
+
   return null;
 }
 
