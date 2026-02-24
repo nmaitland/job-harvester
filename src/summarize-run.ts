@@ -9,6 +9,7 @@ import { resolveRequiredRunDirFromCli } from './utils/run-dir';
 interface RunFacts {
   runDir: string;
   timestamp: string;
+  runDate: string;
   discovered: number;
   fetchedSuccess: number;
   fetchedFailed: number;
@@ -23,7 +24,8 @@ interface RunFacts {
 interface SummaryResult {
   runSummaryDir: string;
   summaryLogFile: string;
-  reviewJobsFile: string;
+  reviewJobsMdFile: string;
+  reviewJobsCsvFile: string;
   metadataFile: string;
 }
 
@@ -38,6 +40,77 @@ async function readJsonIfExists<T>(filePath: string): Promise<T | null> {
   } catch {
     return null;
   }
+}
+
+function formatDateTimeForOutput(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const hour = String(date.getUTCHours()).padStart(2, '0');
+  const minute = String(date.getUTCMinutes()).padStart(2, '0');
+  const second = String(date.getUTCSeconds()).padStart(2, '0');
+  return `${year}/${month}/${day} ${hour}:${minute}:${second}`;
+}
+
+function parseRunDate(runDir: string, fallbackIsoTimestamp: string): string {
+  const base = path.basename(runDir);
+  const match = /^run-(\d{4})-(\d{2})-(\d{2})-(\d{2})-(\d{2})-(\d{2})$/.exec(base);
+  if (match !== null) {
+    const [, year, month, day, hour, minute, second] = match;
+    return `${year}/${month}/${day} ${hour}:${minute}:${second}`;
+  }
+
+  const fallbackDate = new Date(fallbackIsoTimestamp);
+  if (!Number.isNaN(fallbackDate.getTime())) {
+    return formatDateTimeForOutput(fallbackDate);
+  }
+
+  return fallbackIsoTimestamp;
+}
+
+function sanitizeTitle(title: string): string {
+  const withoutCarriageReturns = title.replace(/\r/g, '').trim();
+  const firstLine = withoutCarriageReturns.split('\n')[0]?.trim() ?? '';
+  let cleaned = firstLine.replace(/\s+/g, ' ').replace(/\s+with verification$/i, '').trim();
+
+  if (cleaned.length > 0 && cleaned.length % 2 === 0) {
+    const midpoint = cleaned.length / 2;
+    const firstHalf = cleaned.slice(0, midpoint);
+    const secondHalf = cleaned.slice(midpoint);
+    if (firstHalf === secondHalf) {
+      cleaned = firstHalf.trim();
+    }
+  }
+
+  return cleaned;
+}
+
+function escapeMarkdownCell(value: string): string {
+  return value.replace(/\|/g, '\\|');
+}
+
+function escapeCsvCell(value: string): string {
+  const escaped = value.replace(/"/g, '""');
+  if (/[",\n\r]/.test(escaped)) {
+    return `"${escaped}"`;
+  }
+  return escaped;
+}
+
+interface ReviewRow {
+  score: string;
+  company: string;
+  title: string;
+  url: string;
+}
+
+function buildReviewRows(reviewable: CompiledJob[]): ReviewRow[] {
+  return reviewable.map(job => ({
+    score: `S${job.score}`,
+    company: job.company.trim(),
+    title: sanitizeTitle(job.title),
+    url: job.url.trim(),
+  }));
 }
 
 async function collectFacts(runDir: string): Promise<{ facts: RunFacts; reviewable: CompiledJob[] }> {
@@ -60,6 +133,7 @@ async function collectFacts(runDir: string): Promise<{ facts: RunFacts; reviewab
     facts: {
       runDir,
       timestamp: now,
+      runDate: parseRunDate(runDir, now),
       discovered: discovered?.stats.total ?? discovered?.jobs.length ?? 0,
       fetchedSuccess: fetched?.stats.success ?? 0,
       fetchedFailed: fetched?.stats.failed ?? 0,
@@ -87,13 +161,37 @@ function buildDeterministicSummary(facts: RunFacts): string {
   ].join('\n');
 }
 
-function buildDeterministicReviewList(reviewable: CompiledJob[]): string {
-  const lines: string[] = ['Review-worthy jobs (PASS + REVIEW):', ''];
-  for (const job of reviewable) {
-    lines.push(`S${job.score} | ${job.company} | ${job.title} | ${job.url}`);
+function buildReviewMarkdown(runDate: string, reviewIntro: string, rows: ReviewRow[]): string {
+  const lines: string[] = [
+    `# Job Review List — ${runDate}`,
+    '',
+    reviewIntro,
+    '',
+    '| Score | Company | Title | URL |',
+    '| --- | --- | --- | --- |',
+  ];
+
+  if (rows.length === 0) {
+    lines.push('| - | - | No PASS/REVIEW jobs were found in compile-results.json. | - |');
+  } else {
+    for (const row of rows) {
+      lines.push(
+        `| ${escapeMarkdownCell(row.score)} | ${escapeMarkdownCell(row.company)} | ${escapeMarkdownCell(row.title)} | ${escapeMarkdownCell(row.url)} |`
+      );
+    }
   }
-  if (reviewable.length === 0) {
-    lines.push('No PASS/REVIEW jobs were found in compile-results.json.');
+
+  return lines.join('\n');
+}
+
+function buildReviewCsv(runDate: string, rows: ReviewRow[]): string {
+  const lines = ['RunDate,Score,Company,Title,URL'];
+  for (const row of rows) {
+    lines.push(
+      [runDate, row.score, row.company, row.title, row.url]
+        .map(cell => escapeCsvCell(cell))
+        .join(',')
+    );
   }
   return lines.join('\n');
 }
@@ -142,23 +240,23 @@ export async function runSummarize(runDir: string): Promise<SummaryResult> {
 
   const { facts, reviewable } = await collectFacts(runDir);
   const deterministicSummary = buildDeterministicSummary(facts);
-  const deterministicReviewText = buildDeterministicReviewList(reviewable);
-  const reviewLines = reviewable.map(job => `S${job.score} | ${job.company} | ${job.title} | ${job.url}`);
+  const reviewRows = buildReviewRows(reviewable);
+  const reviewLines = reviewRows.map(row => `${row.score} | ${row.company} | ${row.title} | ${row.url}`);
   const ai = await polishWithAi(facts, reviewLines);
 
   const summaryLogText = ai?.summary ?? deterministicSummary;
-  const reviewJobsText = [
-    ai?.reviewIntro ?? 'Detailed review list for jobs worth reviewing.',
-    '',
-    deterministicReviewText,
-  ].join('\n');
+  const reviewIntro = ai?.reviewIntro ?? 'Detailed review list for jobs worth reviewing.';
+  const reviewJobsMdText = buildReviewMarkdown(facts.runDate, reviewIntro, reviewRows);
+  const reviewJobsCsvText = buildReviewCsv(facts.runDate, reviewRows);
 
   const summaryLogFile = path.join(runSummaryDir, 'summary-log.txt');
-  const reviewJobsFile = path.join(runSummaryDir, 'review-jobs.txt');
+  const reviewJobsMdFile = path.join(runSummaryDir, 'review-jobs.md');
+  const reviewJobsCsvFile = path.join(runSummaryDir, 'review-jobs.csv');
   const metadataFile = path.join(runSummaryDir, 'summary-meta.json');
 
   await fs.writeFile(summaryLogFile, `${summaryLogText.trim()}\n`, 'utf-8');
-  await fs.writeFile(reviewJobsFile, `${reviewJobsText.trim()}\n`, 'utf-8');
+  await fs.writeFile(reviewJobsMdFile, `${reviewJobsMdText.trim()}\n`, 'utf-8');
+  await fs.writeFile(reviewJobsCsvFile, `${reviewJobsCsvText.trim()}\n`, 'utf-8');
   await fs.writeFile(
     metadataFile,
     JSON.stringify(
@@ -178,7 +276,8 @@ export async function runSummarize(runDir: string): Promise<SummaryResult> {
   return {
     runSummaryDir,
     summaryLogFile,
-    reviewJobsFile,
+    reviewJobsMdFile,
+    reviewJobsCsvFile,
     metadataFile,
   };
 }
@@ -192,7 +291,8 @@ export async function main(runDirArg?: string): Promise<void> {
   logger.success('Run summary generation complete');
   logger.info(`  Output dir: ${result.runSummaryDir}`);
   logger.info(`  Summary log: ${result.summaryLogFile}`);
-  logger.info(`  Review list: ${result.reviewJobsFile}`);
+  logger.info(`  Review list (Markdown): ${result.reviewJobsMdFile}`);
+  logger.info(`  Review list (CSV): ${result.reviewJobsCsvFile}`);
 }
 
 if (require.main === module) {

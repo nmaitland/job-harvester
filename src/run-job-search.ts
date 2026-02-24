@@ -204,11 +204,11 @@ export async function writeRunManifest(runDir: string, phase: Phase): Promise<vo
         aiMayWrite: false,
         description: 'Generated PDFs for PASS/REVIEW jobs',
       },
-      'run-summary/*.txt': {
+      'run-summary/*.{txt,md,csv,json}': {
         owner: 'summarize-run.ts',
         aiMayRead: true,
         aiMayWrite: false,
-        description: 'Human-readable run summary and review list',
+        description: 'Run summary outputs (txt/md/csv) and metadata',
       },
       'upload-results.json': {
         owner: 'upload.ts',
@@ -295,7 +295,7 @@ export async function runDiscoveryPhase(runDir: string, dryRun: boolean): Promis
  * Run email-processing phase
  */
 export async function runEmailProcessingPhase(runDir: string, dryRun: boolean): Promise<void> {
-  logger.info('=== Phase: Email Processing ===');
+  logger.info('=== Phase: Discovery Enrichment (Websites + Emails) ===');
 
   await runScript('extract-from-websites', runDir, dryRun);
   await runScript('extract-from-emails', runDir, dryRun);
