@@ -1,9 +1,10 @@
 # Dependencies
 node_modules/
 dist/
-
+coverage/
 .env
 .env.test
 .env.dev
 .google-credentials.json
 temp*/
+.tmp-*

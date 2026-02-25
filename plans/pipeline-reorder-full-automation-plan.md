@@ -274,7 +274,7 @@ Each renamed source file contains internal references (log messages, comments, f
 
 ### `02-extract-from-emails.test.ts` (renamed from `ai-step2-extract-from-gmail.test.ts`)
 
-- Update import paths from `../ai/step2-extract-from-gmail` to `../02-extract-from-emails`
+- Update import paths from `../ai/step2-extract-from-gmail` to `../extract-from-emails`
 - Update log file name assertions: `ai-step2-log.json` → `02-extract-from-emails-log.json`
 
 ### `04-score-survivors.test.ts` (renamed from `ai-step4-score-survivors.test.ts`)
