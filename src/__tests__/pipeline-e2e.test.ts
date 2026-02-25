@@ -7,12 +7,21 @@ async function createTempRunDir(): Promise<string> {
 }
 
 describe('pipeline stage handoff e2e', () => {
+  const tempDirs: string[] = [];
+
   beforeEach(() => {
     jest.resetModules();
   });
 
+  afterAll(async () => {
+    for (const dir of tempDirs) {
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+
   it('runs 04-prefilter main against 03-fetch-specs output shape', async () => {
     const runDir = await createTempRunDir();
+    tempDirs.push(runDir);
 
     const fetchedSpecs = {
       specs: [
@@ -47,10 +56,12 @@ describe('pipeline stage handoff e2e', () => {
 
   it('preserves spec text through compile and writes upload results at run root', async () => {
     const runDir = await createTempRunDir();
+    tempDirs.push(runDir);
 
     await fs.mkdir(path.join(runDir, 'job-scores'), { recursive: true });
     await fs.mkdir(path.join(runDir, 'pdfs'), { recursive: true });
     await fs.mkdir(path.join(runDir, 'specs'), { recursive: true });
+    await fs.mkdir(path.join(runDir, 'run-summary'), { recursive: true });
 
     const survivors = [
       {
@@ -66,6 +77,13 @@ describe('pipeline stage handoff e2e', () => {
         fetchedAt: '2026-01-01T00:00:01.000Z',
       },
     ];
+
+    // Create discovered-jobs.json so upload's recordProcessedUrlsForRun doesn't ENOENT
+    await fs.writeFile(
+      path.join(runDir, 'discovered-jobs.json'),
+      JSON.stringify({ jobs: survivors }),
+      'utf-8'
+    );
 
     await fs.writeFile(path.join(runDir, 'pre-filter-survivors.json'), JSON.stringify(survivors), 'utf-8');
     await fs.writeFile(path.join(runDir, 'pre-filter-rejections.json'), JSON.stringify([]), 'utf-8');
@@ -101,5 +119,5 @@ describe('pipeline stage handoff e2e', () => {
     const uploadResultsPath = path.join(runDir, 'upload-results.json');
     const uploadResults = await fs.readFile(uploadResultsPath, 'utf-8');
     expect(uploadResults).toContain('"stats"');
-  });
+  }, 15_000);
 });
