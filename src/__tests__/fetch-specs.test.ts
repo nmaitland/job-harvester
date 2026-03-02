@@ -5,6 +5,7 @@
 import {
   routeByUrl,
   fetchLinkedIn,
+  normalizeLinkedInUrl,
   extractLinkedInText,
   extractJobAgentText,
   extractWellfoundText,
@@ -41,6 +42,18 @@ describe('routeByUrl', () => {
   it('should route other URLs to web fetcher', () => {
     expect(routeByUrl('https://example.com/jobs/123')).toBe('web');
     expect(routeByUrl('https://company.com/careers')).toBe('web');
+  });
+});
+
+describe('normalizeLinkedInUrl', () => {
+  it('should remove /comm segment from LinkedIn URL', () => {
+    expect(normalizeLinkedInUrl('https://www.linkedin.com/comm/jobs/view/4377937396'))
+      .toBe('https://www.linkedin.com/jobs/view/4377937396');
+  });
+
+  it('should keep regular LinkedIn URLs unchanged', () => {
+    expect(normalizeLinkedInUrl('https://www.linkedin.com/jobs/view/4377937396'))
+      .toBe('https://www.linkedin.com/jobs/view/4377937396');
   });
 });
 
@@ -86,6 +99,26 @@ describe('fetchLinkedIn', () => {
 
     expect(result.success).toBe(true);
     expect(result.specText).toBe('Job description');
+  });
+
+  it('should send normalized LinkedIn URL to Brightdata', async () => {
+    const commJob: DiscoveredJob = {
+      ...mockJob,
+      url: 'https://www.linkedin.com/comm/jobs/view/4377937396',
+    };
+
+    (fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ([{ job_description_formatted: '<p>Job description</p>' }]),
+    });
+
+    const result = await fetchLinkedIn(commJob);
+
+    expect(result.success).toBe(true);
+    const request = (fetch as jest.Mock).mock.calls[0]?.[1] as { body: string };
+    const body = JSON.parse(request.body) as { input: Array<{ url: string }> };
+    expect(body.input[0]?.url).toBe('https://www.linkedin.com/jobs/view/4377937396');
   });
 
   it('should retry on HTTP error', async () => {

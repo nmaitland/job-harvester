@@ -79,6 +79,13 @@ export function routeByUrl(url: string): 'linkedin' | 'jobagent' | 'wellfound' |
   return 'web';
 }
 
+export function normalizeLinkedInUrl(url: string): string {
+  return url.replace(
+    /(https?:\/\/(?:[\w-]+\.)?linkedin\.com)\/comm(?=\/)/i,
+    '$1'
+  );
+}
+
 /**
  * Fetch LinkedIn job via Brightdata sync API
  */
@@ -90,6 +97,7 @@ export async function fetchLinkedIn(job: DiscoveredJob): Promise<FetchResult> {
 
   const maxRetries = 2;
   const delayMs = 5000;
+  const normalizedUrl = normalizeLinkedInUrl(job.url);
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -102,7 +110,7 @@ export async function fetchLinkedIn(job: DiscoveredJob): Promise<FetchResult> {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            input: [{ url: job.url }],
+            input: [{ url: normalizedUrl }],
           }),
         }
       ), 120000, 'LinkedIn fetch');
