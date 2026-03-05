@@ -1,6 +1,16 @@
 # Job Harvester
 
-An automated job search pipeline built with TypeScript. It discovers job postings from multiple sources, fetches full specifications, filters and scores them with AI, generates PDFs, and uploads results to cloud storage.
+Job searching is tedious. You check the same sites every day, skim dozens of irrelevant postings, copy-paste job specs into documents, and lose track of what you've already seen. Job Harvester automates all of that.
+
+It's a TypeScript pipeline that runs on your machine and does the repetitive work for you: it searches multiple job sources, pulls down the full job descriptions, filters out the noise (roles you've already applied to, junior positions, failed fetches), scores what's left against your CV using an LLM, and produces a neat set of PDFs and summaries — ready for you to review and act on.
+
+**Why use it?**
+
+- **Save hours per week** — Instead of manually checking Brave, LinkedIn, and email alerts, run one command and get a curated shortlist.
+- **Never re-read the same job twice** — Cross-run deduplication tracks every URL you've already processed.
+- **AI-powered relevance scoring** — Jobs are scored against your own CV keywords, so you see the best matches first.
+- **Everything in one place** — PDFs and summaries are uploaded to OneDrive and/or Google Drive, organised by run date.
+- **Fully configurable** — Pick which discovery sources to enable, tune concurrency, set your own scoring model, or run individual stages in isolation.
 
 ## How It Works
 
