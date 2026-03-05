@@ -140,7 +140,11 @@ function toGmailLabelQuery(label: string): string {
 }
 
 function getGmailUserId(): string {
-  return process.env.GOOGLE_GMAIL_IMPERSONATED_USER ?? 'user@example.com';
+  const user = process.env.GOOGLE_GMAIL_IMPERSONATED_USER;
+  if (user == null || user === '') {
+    throw new Error('GOOGLE_GMAIL_IMPERSONATED_USER is required for Gmail discovery');
+  }
+  return user;
 }
 
 function shouldMarkGmailAsRead(): boolean {

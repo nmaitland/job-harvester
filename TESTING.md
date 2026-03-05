@@ -1,114 +1,67 @@
-# Testing Guide
+# Building and Testing
 
-## Overview
+## Build
 
-This project uses Jest for testing with full TypeScript support. All tests are located in `src/__tests__/`.
+```bash
+# Install dependencies
+npm install
 
-## Running Tests
+# Install Playwright browser (required for PDF generation and web scraping)
+npx playwright install chromium
+
+# Compile TypeScript to dist/
+npm run build
+```
+
+## Test
+
+Tests use Jest with `ts-jest`. All tests are in `src/__tests__/`, one file per pipeline stage. Tests mock `fs/promises` and external APIs to run without network access or file I/O.
 
 ```bash
 # Run all tests
 npm test
 
-# Run tests in watch mode
+# Run a single test file
+npx jest src/__tests__/prefilter.test.ts
+
+# Watch mode
 npm run test:watch
 
-# Run tests with coverage
+# Coverage report
 npm run test:coverage
+
+# CI mode (4 GB heap, sequential execution)
+npm run test:ci
 ```
 
-## Test Structure
-
-Each script has a corresponding test file:
-
-- `discover.ts` → `discover.test.ts`
-- `extract-from-websites.ts` → `extract-from-websites.test.ts`
-- `extract-from-emails.ts` → `extract-from-emails.test.ts`
-- `fetch-specs.ts` → `fetch-specs.test.ts`
-- `prefilter.ts` → `prefilter.test.ts`
-- `score-survivors.ts` → `score-survivors.test.ts`
-- `compile-results.ts` → `compile-results.test.ts`
-- `generate-pdfs.ts` → `generate-pdfs.test.ts`
-- `summarize-run.ts` → `summarize-run.test.ts`
-- `upload.ts` → `upload.test.ts`
-
-## Mocking Strategy
-
-### File System
-
-Tests mock `fs/promises` to avoid actual file operations:
-
-```typescript
-jest.mock('fs/promises');
-const mockedFs = fs as jest.Mocked<typeof fs>;
-```
-
-### External APIs
-
-External APIs (Gmail, Brightdata, OneDrive, Google Drive) should be mocked in their respective test files.
-
-## Writing Tests
-
-### Unit Tests
-
-Test individual functions in isolation:
-
-```typescript
-describe('functionName', () => {
-  it('should do something', () => {
-    const result = functionName(input);
-    expect(result).toBe(expected);
-  });
-});
-```
-
-### Integration Tests
-
-Test the interaction between multiple functions:
-
-```typescript
-describe('runPreFilter', () => {
-  it('should separate survivors and rejections', async () => {
-    mockedFs.readFile.mockResolvedValueOnce('Google\nMicrosoft');
-    mockedFs.readFile.mockResolvedValueOnce('[]');
-    
-    const result = await runPreFilter(specs);
-    
-    expect(result.survivors).toHaveLength(1);
-    expect(result.rejections).toHaveLength(1);
-  });
-});
-```
-
-## Coverage Requirements
-
-- All exported functions should have tests
-- All filter conditions should be tested
-- All error paths should be tested
-- Aim for >80% code coverage
-
-## Test Data
-
-Use realistic test data that matches the actual data structures:
-
-```typescript
-const jobSpec: JobSpec = {
-  id: '1',
-  company: 'Google',
-  title: 'Senior Developer',
-  url: 'https://example.com/job',
-  source: 'linkedin',
-  discoveredAt: '2024-01-01',
-  specText: '',
-  fetchStatus: 'success',
-  fetchedAt: '2024-01-01',
-};
-```
-
-## Continuous Integration
-
-Tests should pass before merging:
+## Lint
 
 ```bash
-npm run lint && npm run check-types && npm run build && npm run test:ci
+# Check for lint errors
+npm run lint
+
+# Auto-fix lint errors
+npm run lint:fix
+```
+
+## Type Check
+
+```bash
+npm run check-types
+```
+
+## Full Validation
+
+Runs type check, lint, and tests in sequence. Use this before committing:
+
+```bash
+npm run validate
+```
+
+## CI Pipeline
+
+GitHub Actions runs on every push and PR:
+
+```
+npm ci → check-types → lint → test:ci
 ```
