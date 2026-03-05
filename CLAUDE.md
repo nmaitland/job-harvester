@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Commit Rules
+
+Do not add "Co-Authored-By" trailers to commit messages.
+
 ## Project Overview
 
 Job Harvester is a TypeScript pipeline for automated job search. It discovers jobs from multiple sources (Brave Search, LinkedIn, Gmail), fetches specs, filters, scores with AI, generates PDFs, and uploads to cloud storage. The pipeline has 10 sequential stages orchestrated by `run-job-search.ts`.
