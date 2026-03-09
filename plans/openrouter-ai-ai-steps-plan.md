@@ -32,7 +32,7 @@ Relevant pipeline touchpoints already exist:
   - appends only new jobs to `RUN_DIR/discovered-jobs.json`
 - `src/ai/step4-score-survivors.ts`
   - reads `RUN_DIR/pre-filter-survivors.json`
-  - reads management file `jobs/cv-keywords.md`
+  - reads management file `cv-keywords.md`
   - scores each survivor and writes one verdict JSON per job in `RUN_DIR/job-scores`
 - `src/ai/validators.ts`
   - deterministic schema guards for model output
@@ -103,7 +103,7 @@ flowchart TD
 ### Input handling
 
 - Read `RUN_DIR/pre-filter-survivors.json` as array
-- Read `jobs/cv-keywords.md` from management data location
+- Read `cv-keywords.md` from management data location
 - Ensure `RUN_DIR/job-scores` exists
 
 ### Scoring model contract
@@ -184,5 +184,5 @@ Example commands:
 
 - Should AI Step 1 be embedded into [`01-discover.ts`](src/01-discover.ts) or remain a separate operator invoked script
 - Should we update [`findVerdictFile()`](src/04-compile-results.ts:63) to map verdicts by `jobId` first to prevent same company collision
-- Should hard fail occur when `jobs/cv-keywords.md` is missing, or fallback to conservative REVIEW defaults
+- Should hard fail occur when `cv-keywords.md` is missing, or fallback to conservative REVIEW defaults
 

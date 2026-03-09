@@ -62,7 +62,7 @@ function getLogFile(runDir: string): string {
 }
 
 function getCvKeywordsFile(): string {
-  return path.join(resolveManagementDataDir(), 'jobs', 'cv-keywords.md');
+  return path.join(resolveManagementDataDir(), 'cv-keywords.md');
 }
 
 function getScoringBatchConcurrency(): number {
