@@ -686,13 +686,12 @@ export function deduplicateByUrl(jobs: DiscoveredJob[]): DiscoveredJob[] {
   const unique: DiscoveredJob[] = [];
 
   for (const job of jobs) {
-    // Normalize URL: lowercase, strip query params
     if (job.url === undefined) {
       continue;
     }
-    const normalized = job.url.toLowerCase().split('?')[0];
+    const normalized = normalizeHttpUrl(job.url);
 
-    if (normalized !== undefined && !seen.has(normalized)) {
+    if (normalized !== null && !seen.has(normalized)) {
       seen.add(normalized);
       unique.push(job);
     }

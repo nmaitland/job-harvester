@@ -385,6 +385,31 @@ describe('deduplicateByUrl', () => {
     expect(result).toHaveLength(2);
   });
 
+  it('should treat LinkedIn /comm URLs as duplicates of regular job URLs', () => {
+    const jobs: DiscoveredJob[] = [
+      {
+        id: '1',
+        company: 'Google',
+        title: 'Developer',
+        url: 'https://www.linkedin.com/comm/jobs/view/4377882826',
+        source: 'gmail',
+        discoveredAt: '2024-01-01',
+      },
+      {
+        id: '2',
+        company: 'Google',
+        title: 'Engineer',
+        url: 'https://www.linkedin.com/jobs/view/4377882826/',
+        source: 'linkedin',
+        discoveredAt: '2024-01-01',
+      },
+    ];
+
+    const result = deduplicateByUrl(jobs);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.id).toBe('1');
+  });
+
   it('should skip jobs with undefined URLs', () => {
     const jobs = [
       {
