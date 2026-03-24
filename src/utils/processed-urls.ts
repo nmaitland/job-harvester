@@ -43,7 +43,8 @@ function parseEntry(raw: unknown): RegistryEntry | null {
   }
 
   const rawUrl = typeof raw.url === 'string' ? raw.url : '';
-  const normalized = typeof raw.normalizedUrl === 'string' ? raw.normalizedUrl : normalizeHttpUrl(rawUrl);
+  const storedNormalized = typeof raw.normalizedUrl === 'string' ? raw.normalizedUrl : '';
+  const normalized = normalizeHttpUrl(rawUrl) ?? normalizeHttpUrl(storedNormalized);
   if (rawUrl.trim() === '' || normalized === null) {
     return null;
   }

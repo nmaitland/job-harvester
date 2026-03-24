@@ -47,6 +47,29 @@ describe('processed-urls utilities', () => {
     expect(result.has('https://a.example/jobs/1')).toBe(true);
   });
 
+  it('loadProcessedUrlRegistry re-normalizes legacy LinkedIn /comm entries from raw url', async () => {
+    mockedFs.readFile.mockResolvedValueOnce(
+      JSON.stringify({
+        version: 1,
+        updatedAt: '2026-02-24T00:00:00.000Z',
+        urls: [
+          {
+            url: 'https://www.linkedin.com/comm/jobs/view/4377882826/',
+            normalizedUrl: 'https://www.linkedin.com/comm/jobs/view/4377882826',
+            recordedAt: '2026-02-24T00:00:00.000Z',
+            runTimestamp: '2026-02-24-00-00-00',
+            source: 'gmail',
+          },
+        ],
+      })
+    );
+
+    const result = await loadProcessedUrlRegistry('/mgmt');
+
+    expect(result.has('https://www.linkedin.com/jobs/view/4377882826')).toBe(true);
+    expect(result.has('https://www.linkedin.com/comm/jobs/view/4377882826')).toBe(false);
+  });
+
   it('appendUrlsToRegistry creates registry file and deduplicates by normalized URL', async () => {
     mockedFs.readFile.mockRejectedValueOnce(new Error('missing'));
 
@@ -139,5 +162,22 @@ describe('processed-urls utilities', () => {
     expect(entries[0]?.normalizedUrl).toBe('https://acme.example/jobs/1');
     expect(entries[0]?.runTimestamp).toBe('2026-02-24-10-11-12');
   });
-});
 
+  it('buildProcessedUrlEntries normalizes LinkedIn /comm URLs', () => {
+    const jobs: DiscoveredJob[] = [
+      {
+        id: '1',
+        company: 'Acme',
+        title: 'Head of Eng',
+        url: 'https://www.linkedin.com/comm/jobs/view/4377882826/',
+        source: 'linkedin',
+        discoveredAt: '2026-02-24T00:00:00.000Z',
+      },
+    ];
+
+    const entries = buildProcessedUrlEntries(jobs, '/data/run-2026-02-24-10-11-12');
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.normalizedUrl).toBe('https://www.linkedin.com/jobs/view/4377882826');
+  });
+});

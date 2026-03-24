@@ -47,6 +47,16 @@ describe('normalizeUrl', () => {
     expect(normalizeUrl('https://example.com/jobs/')).toBe('https://example.com/jobs');
   });
 
+  it('should strip LinkedIn /comm path segment', () => {
+    expect(normalizeUrl('https://www.linkedin.com/comm/jobs/view/4377882826/'))
+      .toBe('https://www.linkedin.com/jobs/view/4377882826');
+  });
+
+  it('should not strip /comm path segment for non-LinkedIn domains', () => {
+    expect(normalizeUrl('https://example.com/comm/jobs/view/4377882826/'))
+      .toBe('https://example.com/comm/jobs/view/4377882826');
+  });
+
   it('should handle URLs without protocol', () => {
     expect(normalizeUrl('example.com/jobs')).toBe('example.com/jobs');
   });

@@ -57,11 +57,19 @@ export function normalizeCompany(company: string): string {
 export function normalizeUrl(url: string): string {
   try {
     const urlObj = new URL(url);
+    const isLinkedInHost = /(^|\.)linkedin\.com$/i.test(urlObj.hostname);
+    const normalizedPathname = isLinkedInHost
+      ? urlObj.pathname.replace(/^\/comm(?=\/)/i, '')
+      : urlObj.pathname;
     // Remove query params and trailing slash
-    return `${urlObj.origin}${urlObj.pathname}`.toLowerCase().replace(/\/$/, '');
+    return `${urlObj.origin}${normalizedPathname}`.toLowerCase().replace(/\/$/, '');
   } catch {
     // If URL parsing fails, just lowercase and trim
-    return url.toLowerCase().trim().replace(/\/$/, '');
+    return url
+      .toLowerCase()
+      .trim()
+      .replace(/^https?:\/\/(?:[\w-]+\.)?linkedin\.com\/comm(?=\/)/, match => match.replace('/comm', ''))
+      .replace(/\/$/, '');
   }
 }
 
