@@ -115,20 +115,58 @@ export function renderJobHtml(job: CompiledJob): string {
 </head>
 <body>
   <div class="header">
-    <div class="title">${job.title}</div>
-    <div class="company">${job.company}</div>
+    <div class="title">${sanitizeForHtml(job.title)}</div>
+    <div class="company">${sanitizeForHtml(job.company)}</div>
     <div class="meta">Source: <a href="${job.url}">${job.url}</a></div>
     <div class="score">${scoreBadge}</div>
-    <div style="font-style: italic; color: #666; margin-top: 10px;">${job.reasoning}</div>
+    <div style="font-style: italic; color: #666; margin-top: 10px;">${sanitizeForHtml(job.reasoning)}</div>
   </div>
-  
-  <div class="description">${escapeHtml(job.specText)}</div>
+
+  <div class="description">${sanitizeForHtml(job.specText)}</div>
   
   <div class="footer">Generated: ${new Date().toISOString()}<br>
     Job ID: ${job.jobId}
   </div>
 </body>
 </html>`;
+}
+
+/**
+ * Decode HTML entities to their actual characters.
+ * Handles named entities, hex numeric (&#xNNNN;), and decimal numeric (&#NNNN;).
+ * Must be applied before escapeHtml to avoid double-encoding.
+ */
+export function decodeHtmlEntities(text: string): string {
+  const namedEntities: Record<string, string> = {
+    '&amp;': '&',
+    '&apos;': "'",
+    '&quot;': '"',
+    '&lt;': '<',
+    '&gt;': '>',
+    '&nbsp;': '\u00A0',
+    '&ndash;': '\u2013',
+    '&mdash;': '\u2014',
+    '&lsquo;': '\u2018',
+    '&rsquo;': '\u2019',
+    '&ldquo;': '\u201C',
+    '&rdquo;': '\u201D',
+    '&hellip;': '\u2026',
+    '&bull;': '\u2022',
+    '&trade;': '\u2122',
+    '&copy;': '\u00A9',
+    '&reg;': '\u00AE',
+  };
+
+  return text
+    // Hex numeric entities: &#xNNNN;
+    .replace(/&#x([0-9a-fA-F]+);/g, (_match, hex: string) =>
+      String.fromCodePoint(parseInt(hex, 16)))
+    // Decimal numeric entities: &#NNNN;
+    .replace(/&#(\d+);/g, (_match, dec: string) =>
+      String.fromCodePoint(parseInt(dec, 10)))
+    // Named entities (case-insensitive)
+    .replace(/&[a-zA-Z]+;/g, (entity) =>
+      namedEntities[entity.toLowerCase()] ?? entity);
 }
 
 /**
@@ -141,6 +179,13 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+/**
+ * Decode HTML entities then escape for safe HTML insertion.
+ */
+function sanitizeForHtml(text: string): string {
+  return escapeHtml(decodeHtmlEntities(text));
 }
 
 /**
