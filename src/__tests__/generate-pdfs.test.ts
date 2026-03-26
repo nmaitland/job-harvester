@@ -2,7 +2,7 @@
  * Tests for 07-generate-pdfs.ts
  */
 
-import { buildFilename, renderJobHtml, generateJobPdf } from '../generate-pdfs';
+import { buildFilename, renderJobHtml, generateJobPdf, decodeHtmlEntities } from '../generate-pdfs';
 import type { CompiledJob } from '../types';
 
 // Mock logger
@@ -215,6 +215,83 @@ describe('renderJobHtml', () => {
 
     const result = renderJobHtml(job);
     expect(result).toContain('https://example.com/job/123');
+  });
+});
+
+describe('decodeHtmlEntities', () => {
+  it('should decode named entities', () => {
+    expect(decodeHtmlEntities('We&apos;re hiring')).toBe("We're hiring");
+    expect(decodeHtmlEntities('R&amp;D team')).toBe('R&D team');
+    expect(decodeHtmlEntities('&ldquo;hello&rdquo;')).toBe('\u201Chello\u201D');
+  });
+
+  it('should decode hex numeric entities', () => {
+    expect(decodeHtmlEntities('fast&#x2014;moving')).toBe('fast\u2014moving');
+    expect(decodeHtmlEntities('2013&#x2013;2024')).toBe('2013\u20132024');
+    expect(decodeHtmlEntities('it&#x2019;s')).toBe('it\u2019s');
+  });
+
+  it('should decode decimal numeric entities', () => {
+    expect(decodeHtmlEntities('em&#8212;dash')).toBe('em\u2014dash');
+    expect(decodeHtmlEntities('en&#8211;dash')).toBe('en\u2013dash');
+  });
+
+  it('should handle mixed entities in one string', () => {
+    const input = 'We&apos;re building &#x2014; R&amp;D &ldquo;team&rdquo;';
+    const expected = "We're building \u2014 R&D \u201Cteam\u201D";
+    expect(decodeHtmlEntities(input)).toBe(expected);
+  });
+
+  it('should pass through text without entities unchanged', () => {
+    expect(decodeHtmlEntities('plain text')).toBe('plain text');
+  });
+});
+
+describe('renderJobHtml HTML entity handling', () => {
+  it('should decode HTML entities in specText before rendering', () => {
+    const job: CompiledJob = {
+      jobId: '1',
+      company: 'Company',
+      title: 'Developer',
+      url: 'https://example.com',
+      specText: 'We&apos;re hiring &#x2014; join us',
+      score: 8,
+      reasoning: 'Good',
+      passedPreFilter: true,
+      rejectionReason: undefined,
+      status: 'scored',
+      compiledAt: '2024-01-15T10:00:00Z',
+    };
+
+    const result = renderJobHtml(job);
+    // Should NOT contain double-encoded &amp;apos;
+    expect(result).not.toContain('&amp;apos;');
+    expect(result).not.toContain('&amp;#x2014;');
+    // Should contain the decoded characters (re-escaped where needed)
+    expect(result).toContain("We&#039;re hiring \u2014 join us");
+  });
+
+  it('should decode HTML entities in title, company, and reasoning', () => {
+    const job: CompiledJob = {
+      jobId: '1',
+      company: 'O&apos;Reilly',
+      title: 'R&amp;D Lead',
+      url: 'https://example.com',
+      specText: '',
+      score: 8,
+      reasoning: 'Great fit &#x2014; strong match',
+      passedPreFilter: true,
+      rejectionReason: undefined,
+      status: 'scored',
+      compiledAt: '2024-01-15T10:00:00Z',
+    };
+
+    const result = renderJobHtml(job);
+    expect(result).toContain("O&#039;Reilly");
+    expect(result).toContain('R&amp;D Lead');
+    expect(result).toContain('Great fit \u2014 strong match');
+    expect(result).not.toContain('&amp;apos;');
+    expect(result).not.toContain('&amp;amp;');
   });
 });
 
