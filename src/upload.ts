@@ -41,6 +41,74 @@ interface GoogleDriveUploadResult {
 }
 
 /**
+ * Preflight check for upload credentials
+ * Returns which upload targets are available and logs explicit warnings for missing credentials
+ */
+export async function preflightUploadCredentials(): Promise<{
+  oneDriveAvailable: boolean;
+  googleDriveAvailable: boolean;
+  warnings: string[];
+}> {
+  const warnings: string[] = [];
+  let oneDriveAvailable = true;
+  let googleDriveAvailable = true;
+
+  const credentials = await loadCredentials();
+
+  // Check OneDrive credentials
+  if (credentials.oneDriveToken === '') {
+    oneDriveAvailable = false;
+    const warning = 'OneDrive upload will be SKIPPED: ONEDRIVE_ACCESS_TOKEN is not set. Set it via environment or secrets provider.';
+    warnings.push(warning);
+    logger.warn(warning);
+  } else {
+    logger.info('OneDrive credentials: available');
+  }
+
+  // Check Google Drive credentials
+  const googleDriveFolderId = getGoogleDriveFolderId();
+  if (credentials.googleServiceAccount === '') {
+    googleDriveAvailable = false;
+    const warning = 'Google Drive upload will be SKIPPED: GOOGLE_SERVICE_ACCOUNT_KEY is not set.';
+    warnings.push(warning);
+    logger.warn(warning);
+  } else if (credentials.googleDriveImpersonatedUser === '') {
+    googleDriveAvailable = false;
+    const warning = 'Google Drive upload will be SKIPPED: GOOGLE_DRIVE_IMPERSONATED_USER is not set.';
+    warnings.push(warning);
+    logger.warn(warning);
+  } else if (googleDriveFolderId === '') {
+    googleDriveAvailable = false;
+    const warning = 'Google Drive upload will be SKIPPED: GOOGLE_DRIVE_FOLDER_ID is not set.';
+    warnings.push(warning);
+    logger.warn(warning);
+  } else {
+    logger.info('Google Drive credentials: available');
+  }
+
+  // Summary alert
+  if (!oneDriveAvailable && !googleDriveAvailable) {
+    const warning = 'CRITICAL: No upload credentials available. All uploads will be skipped. Output will not be backed up to cloud storage.';
+    warnings.push(warning);
+    logger.error(warning);
+  } else if (!oneDriveAvailable || !googleDriveAvailable) {
+    const available = [];
+    if (oneDriveAvailable) available.push('OneDrive');
+    if (googleDriveAvailable) available.push('Google Drive');
+    const missing = [];
+    if (!oneDriveAvailable) missing.push('OneDrive');
+    if (!googleDriveAvailable) missing.push('Google Drive');
+    logger.warn(`Partial upload capability: ${available.join(' + ')} available, ${missing.join(' + ')} missing.`);
+  }
+
+  return {
+    oneDriveAvailable,
+    googleDriveAvailable,
+    warnings,
+  };
+}
+
+/**
  * Load credentials from environment
  */
 async function loadCredentials(): Promise<{
@@ -388,6 +456,10 @@ export async function main(runDirArg?: string): Promise<void> {
   await loadEnvFileIfProvided(args);
   const runDir = runDirArg ?? await resolveRequiredRunDirFromCli(args);
   logger.info('Starting upload...');
+  
+  // Preflight credential check - log explicit warnings before attempting uploads
+  const preflight = await preflightUploadCredentials();
+  
   const specsDir = getSpecsDir(runDir);
   const pdfsDir = getPdfsDir(runDir);
   const runSummaryDir = getRunSummaryDir(runDir);
@@ -462,6 +534,11 @@ export async function main(runDirArg?: string): Promise<void> {
         total: pdfs.length,
         success: googleDriveResult.count,
         failed: googleDriveResult.errors.length,
+      },
+      ...(preflight.warnings.length > 0 ? { warnings: preflight.warnings } : {}),
+      uploadTargets: {
+        oneDrive: preflight.oneDriveAvailable,
+        googleDrive: preflight.googleDriveAvailable,
       },
     };
 

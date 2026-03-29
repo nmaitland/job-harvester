@@ -209,6 +209,11 @@ export interface UploadOutput {
     success: number;
     failed: number;
   };
+  warnings?: string[];
+  uploadTargets?: {
+    oneDrive: boolean;
+    googleDrive: boolean;
+  };
 }
 
 // ============================================================================
