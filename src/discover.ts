@@ -373,9 +373,11 @@ export async function checkLinkedInLoginState(page: {
  */
 export async function discoverViaLinkedIn(
   username: string,
-  password: string
+  password: string,
+  knownUrls: Set<string> = new Set<string>()
 ): Promise<DiscoveredJob[]> {
   const jobs: DiscoveredJob[] = [];
+  let skippedKnownUrls = 0;
   const linkedInProfileDir = getLinkedInProfileDir();
 
   if (username === '' || password === '') {
@@ -486,6 +488,13 @@ export async function discoverViaLinkedIn(
                 const normalizedHref = href.startsWith('http') ? href : `https://www.linkedin.com${href}`;
                 const url = normalizedHref.split('?')[0] ?? normalizedHref;
 
+                // Check against known URLs
+                const normalizedUrl = normalizeHttpUrl(url);
+                if (normalizedUrl !== null && knownUrls.has(normalizedUrl)) {
+                  skippedKnownUrls++;
+                  continue;
+                }
+
                 jobs.push({
                   id: `linkedin-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                   company,
@@ -510,6 +519,10 @@ export async function discoverViaLinkedIn(
     }
   } finally {
     await browser.close();
+  }
+
+  if (skippedKnownUrls > 0) {
+    logger.info(`LinkedIn discovery skipped ${skippedKnownUrls} URL(s) already processed in previous runs`);
   }
 
   return jobs;
@@ -731,7 +744,8 @@ export async function main(runDirArg?: string): Promise<void> {
     // Discover from LinkedIn
     const linkedinJobs = await discoverViaLinkedIn(
       secrets.linkedinUsername,
-      secrets.linkedinPassword
+      secrets.linkedinPassword,
+      processedUrlSet
     );
     log.linkedin.count = linkedinJobs.length;
     logger.info(`LinkedIn discovery: ${linkedinJobs.length} jobs`);
