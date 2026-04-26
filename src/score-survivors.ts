@@ -264,19 +264,26 @@ export async function runScoring(runDir: string): Promise<ScoringResult> {
   let reject = 0;
 
   const batches = chunkArray(survivors, batchConcurrency);
+  const scoringStart = Date.now();
   for (const [batchIndex, batch] of batches.entries()) {
-    logger.info(`Scoring batch ${batchIndex + 1}/${batches.length} (${batch.length} survivor(s))`);
+    const batchStart = Date.now();
+    const elapsedSoFar = ((batchStart - scoringStart) / 1000).toFixed(0);
+    logger.info(`Scoring batch ${batchIndex + 1}/${batches.length} (${batch.length} survivor(s)) — ${elapsedSoFar}s elapsed`);
 
     const verdictPromises = batch.map(async (survivor, itemIndex): Promise<ScoredBatchItem> => {
       const absoluteIndex = batchIndex * batchConcurrency + itemIndex + 1;
       logger.info(`Scoring survivor ${absoluteIndex}/${survivors.length}: ${survivor.id} (${survivor.company})`);
+      const jobStart = Date.now();
 
       try {
         const verdict = await scoreOneJob(survivor, cvKeywords);
+        const jobMs = Date.now() - jobStart;
+        logger.info(`Scored ${survivor.id} in ${(jobMs / 1000).toFixed(1)}s: ${verdict.verdict} (score=${verdict.score})`);
         return { survivor, verdict };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        logger.warn(`Scoring failed for ${survivor.id}: ${message}`);
+        const jobMs = Date.now() - jobStart;
+        logger.warn(`Scoring failed for ${survivor.id} after ${(jobMs / 1000).toFixed(1)}s: ${message}`);
         return {
           survivor,
           verdict: buildFallbackVerdict(survivor, message),
@@ -285,6 +292,8 @@ export async function runScoring(runDir: string): Promise<ScoringResult> {
     });
 
     const settled = await Promise.all(verdictPromises);
+    const batchMs = Date.now() - batchStart;
+    logger.info(`Batch ${batchIndex + 1}/${batches.length} done in ${(batchMs / 1000).toFixed(1)}s`);
 
     for (const item of settled) {
       if (item.verdict.verdict === 'PASS') {

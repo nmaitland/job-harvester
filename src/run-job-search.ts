@@ -237,6 +237,7 @@ export async function runScript(scriptName: string, _runDir: string, dryRun: boo
     return;
   }
 
+  const phaseStart = Date.now();
   logger.info(`Running ${scriptName}...`);
 
   try {
@@ -275,9 +276,11 @@ export async function runScript(scriptName: string, _runDir: string, dryRun: boo
         throw new Error(`Unknown script: ${scriptName}`);
     }
 
-    logger.success(`${scriptName} completed`);
+    const phaseDurationMs = Date.now() - phaseStart;
+    logger.success(`${scriptName} completed in ${(phaseDurationMs / 1000).toFixed(1)}s`);
   } catch (error) {
-    logger.error(`${scriptName} failed: ${error instanceof Error ? error.message : String(error)}`);
+    const phaseDurationMs = Date.now() - phaseStart;
+    logger.error(`${scriptName} failed after ${(phaseDurationMs / 1000).toFixed(1)}s: ${error instanceof Error ? error.message : String(error)}`);
     throw error;
   }
 }

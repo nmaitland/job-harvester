@@ -166,8 +166,10 @@ export async function requestOpenRouterChat(
   }
 
   const maxAttempts = config.maxRetries + 1;
+  const requestStart = Date.now();
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const attemptStart = Date.now();
     const response = await withTimeout(
       fetch(endpoint, {
         method: 'POST',
@@ -184,8 +186,10 @@ export async function requestOpenRouterChat(
         config.timeoutMs,
         'OpenRouter error response body'
       );
+      const attemptMs = Date.now() - attemptStart;
       const retryable = shouldRetryStatus(response.status);
       if (retryable && attempt < maxAttempts) {
+        console.error(`[openrouter] attempt ${attempt}/${maxAttempts} failed in ${(attemptMs / 1000).toFixed(1)}s: HTTP ${response.status} — retrying`);
         await sleep(1000 * attempt);
         continue;
       }
@@ -199,9 +203,20 @@ export async function requestOpenRouterChat(
       'OpenRouter response body'
     );
     try {
-      return extractContent(responsePayload);
+      const content = extractContent(responsePayload);
+      const totalMs = Date.now() - requestStart;
+      if (attempt > 1) {
+        console.error(`[openrouter] succeeded on attempt ${attempt}/${maxAttempts} — total elapsed ${(totalMs / 1000).toFixed(1)}s`);
+      }
+      return content;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      const attemptMs = Date.now() - attemptStart;
+      if (attempt < maxAttempts) {
+        console.error(`[openrouter] attempt ${attempt}/${maxAttempts} parse error in ${(attemptMs / 1000).toFixed(1)}s: ${message} — retrying`);
+        await sleep(1000 * attempt);
+        continue;
+      }
       throw new Error(`OpenRouter response parsing failed: ${message}`);
     }
   }
