@@ -179,7 +179,11 @@ export async function requestOpenRouterChat(
     );
 
     if (!response.ok) {
-      const responseText = await response.text();
+      const responseText = await withTimeout(
+        response.text(),
+        config.timeoutMs,
+        'OpenRouter error response body'
+      );
       const retryable = shouldRetryStatus(response.status);
       if (retryable && attempt < maxAttempts) {
         await sleep(1000 * attempt);
@@ -189,7 +193,11 @@ export async function requestOpenRouterChat(
       throw new Error(`OpenRouter HTTP ${response.status}: ${responseText}`);
     }
 
-    const responsePayload = await response.json() as unknown;
+    const responsePayload = await withTimeout(
+      response.json() as Promise<unknown>,
+      config.timeoutMs,
+      'OpenRouter response body'
+    );
     try {
       return extractContent(responsePayload);
     } catch (error) {
