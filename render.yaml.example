@@ -1,0 +1,106 @@
+# REFERENCE TEMPLATE — not applied automatically. Deliberately named
+# `render.yaml.example`, because Render only auto-detects a Blueprint at
+# `render.yaml`. Nothing here touches the Render account until someone acts on it.
+#
+# This exists so the cron job's configuration is reviewable in version control
+# while the service itself is created by hand in the dashboard. Use it as the
+# checklist when setting that service up; see plans/scheduled-runs-plan.md.
+#
+# Note on `name`: in a live Blueprint this field is a targeting key, not just a
+# label — "If you add the name of an existing service to your Blueprint file,
+# Render attempts to apply the Blueprint's configuration to that existing
+# service." That is exactly why this file is inert. If you ever do promote it to
+# a real Blueprint, set the name deliberately and check nothing already uses it.
+#
+# Cron jobs get a fresh filesystem every run, so processed-urls.json is pulled from
+# and pushed back to the Google Drive folder the run output already goes to. See
+# src/utils/drive-sync.ts.
+#
+# No secret value belongs in this file — the repository is public. Values marked
+# `sync: false` are set in the dashboard; see the table in the plan document.
+#
+# cv-keywords.md and applied-companies.txt are attached as Render Secret Files.
+# They mount read-only at /etc/secrets, so the start command copies them into the
+# writable management data directory the pipeline expects.
+
+services:
+  - type: cron
+    # Whatever you name the service in the dashboard.
+    name: REPLACE_ME
+    runtime: docker
+    plan: starter
+    region: oregon
+    branch: main
+    autoDeployTrigger: commit
+    dockerfilePath: ./Dockerfile
+
+    # Weekdays at 05:00 UTC. Render cron schedules are always UTC, so adjust the
+    # hour for your timezone — and again after a daylight-saving change, which
+    # shifts the local time by an hour unless you edit this.
+    schedule: "0 5 * * 1-5"
+
+    dockerCommand: >-
+      sh -c 'mkdir -p "$JOB_HARVESTER_MANAGEMENT_DATA_DIR" && cp /etc/secrets/cv-keywords.md /etc/secrets/applied-companies.txt "$JOB_HARVESTER_MANAGEMENT_DATA_DIR"/ && node dist/run-job-search.js'
+
+    envVars:
+      # --- Run layout ---
+      - key: JOB_HARVESTER_ROOT_WORK_DIR
+        value: /app/data
+      - key: JOB_HARVESTER_MANAGEMENT_DATA_DIR
+        value: /app/management-data
+
+      # --- AI ---
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        sync: false
+      - key: OPENROUTER_TITLE
+        value: job-harvester
+      - key: OPENROUTER_TIMEOUT_MS
+        value: "90000"
+      - key: OPENROUTER_MAX_RETRIES
+        value: "2"
+      - key: OPENROUTER_WEBSITE_BATCH_CONCURRENCY
+        value: "3"
+      - key: OPENROUTER_EMAIL_BATCH_CONCURRENCY
+        value: "3"
+      - key: OPENROUTER_SCORING_BATCH_CONCURRENCY
+        value: "3"
+      - key: SEARCH_HITS_CONCURRENCY
+        value: "3"
+
+      # --- Discovery: Brave ---
+      - key: BRAVE_API_KEY
+        sync: false
+      - key: BRAVE_QUERIES
+        sync: false
+
+      # --- Discovery: Gmail job alerts ---
+      - key: GOOGLE_SERVICE_ACCOUNT_KEY
+        sync: false
+      - key: GOOGLE_GMAIL_IMPERSONATED_USER
+        sync: false
+      - key: GMAIL_LABEL
+        sync: false
+      - key: GMAIL_MARK_AS_READ
+        value: "true"
+      - key: GMAIL_MAX_RESULTS
+        value: "40"
+
+      # --- Spec fetching ---
+      - key: BRIGHTDATA_API_KEY
+        sync: false
+
+      # --- Output: Google Drive, which also holds processed-urls.json ---
+      - key: GOOGLE_DRIVE_IMPERSONATED_USER
+        sync: false
+      - key: GOOGLE_DRIVE_FOLDER_ID
+        sync: false
+
+      # LINKEDIN_USERNAME / LINKEDIN_PASSWORD are deliberately unset: discover.ts
+      # skips the stage when they are empty. A headless login from a fresh
+      # datacenter IP tends to hit a checkpoint challenge, and LinkedIn postings
+      # still arrive via Brave and Gmail, routed to Brightdata by fetch-specs.
+      #
+      # ONEDRIVE_ACCESS_TOKEN is deliberately unset: it is a ~1 hour access token,
+      # so it cannot survive a daily schedule. Upload preflight skips OneDrive.

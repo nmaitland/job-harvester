@@ -10,6 +10,8 @@ import * as path from 'path';
 import * as logger from './utils/logger';
 import { loadEnvFileIfProvided } from './utils/env-loader';
 import { assertValidRunDirName, requireExistingRunDir, resolveRootWorkDirFromEnv } from './utils/run-dir';
+import { pullProcessedUrls, pushProcessedUrls, resolveDriveSyncConfig } from './utils/drive-sync';
+import { MANAGEMENT_DATA_DIR } from './config';
 
 // Import all script main functions
 import { main as discoverMain } from './discover';
@@ -47,6 +49,57 @@ interface CliArgs {
 
 function resolveDataDir(): string {
   return resolveRootWorkDirFromEnv();
+}
+
+/**
+ * Resolve the management data directory at call time.
+ *
+ * Read from the environment rather than the constant in config.ts because that constant
+ * is evaluated at import time, before --env-file values have been loaded.
+ */
+function resolveManagementDataDirFromEnv(): string {
+  const envDir = process.env.JOB_HARVESTER_MANAGEMENT_DATA_DIR;
+  if (envDir !== undefined && envDir !== '') {
+    return envDir;
+  }
+  return MANAGEMENT_DATA_DIR;
+}
+
+/**
+ * Pull cross-run state from Google Drive before discovery.
+ *
+ * No-op when Drive is not configured (the normal local case) or during a dry run.
+ */
+export async function syncStateFromDrive(dryRun: boolean): Promise<void> {
+  if (dryRun) {
+    logger.info('[DRY RUN] Would pull processed-urls.json from Google Drive');
+    return;
+  }
+
+  const config = resolveDriveSyncConfig();
+  if (config === null) {
+    logger.info('Google Drive sync not configured — using local processed-urls.json');
+    return;
+  }
+
+  await pullProcessedUrls(resolveManagementDataDirFromEnv(), config);
+}
+
+/**
+ * Push cross-run state back to Google Drive after upload.
+ */
+export async function syncStateToDrive(dryRun: boolean): Promise<void> {
+  if (dryRun) {
+    logger.info('[DRY RUN] Would push processed-urls.json to Google Drive');
+    return;
+  }
+
+  const config = resolveDriveSyncConfig();
+  if (config === null) {
+    return;
+  }
+
+  await pushProcessedUrls(resolveManagementDataDirFromEnv(), config);
 }
 
 /**
@@ -288,6 +341,7 @@ export async function runScript(scriptName: string, _runDir: string, dryRun: boo
 export async function runDiscoveryPhase(runDir: string, dryRun: boolean): Promise<void> {
   logger.info('=== Phase: Discovery ===');
 
+  await syncStateFromDrive(dryRun);
   await runScript('discover', runDir, dryRun);
 }
 
@@ -331,6 +385,7 @@ export async function runOutputPhase(runDir: string, dryRun: boolean): Promise<v
   await runScript('generate-pdfs', runDir, dryRun);
   await runScript('summarize-run', runDir, dryRun);
   await runScript('upload', runDir, dryRun);
+  await syncStateToDrive(dryRun);
 }
 
 /**

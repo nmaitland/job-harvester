@@ -9,3 +9,7 @@ coverage/
 .google-credentials.json
 temp*/
 .tmp-*
+
+# Local pipeline output and operator-managed inputs
+data/
+management-data/
