@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+.jest-cache
+.git
+.github
+data
+management-data
+plans
+*.md
+.env*
+.google-credentials.json
