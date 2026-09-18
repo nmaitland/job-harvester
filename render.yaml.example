@@ -19,9 +19,19 @@
 # No secret value belongs in this file — the repository is public. Values marked
 # `sync: false` are set in the dashboard; see the table in the plan document.
 #
-# cv-keywords.md and applied-companies.txt are attached as Render Secret Files.
-# They mount read-only at /etc/secrets, so the start command copies them into the
-# writable management data directory the pipeline expects.
+# There are NO Secret Files. cv-keywords.md and applied-companies.txt live in the
+# same Drive folder as processed-urls.json and are pulled at the start of every run.
+#
+# A Secret File is read-only and edited through the Render dashboard, which is fine
+# for something set once and wrong for applied-companies.txt: that changes whenever
+# the operator applies somewhere, and a file you must redeploy to edit is a file that
+# goes stale. Stale here means the pipeline keeps surfacing jobs at companies already
+# applied to — the filter defeated. Drive is also where the run output already lands,
+# so editing happens where looking happens.
+#
+# The pipeline never WRITES applied-companies.txt. "Applied" is a human act, and
+# inferring it from "we sent you this job" would silently filter out roles that were
+# never applied for.
 
 services:
   - type: cron
@@ -39,8 +49,8 @@ services:
     # shifts the local time by an hour unless you edit this.
     schedule: "0 5 * * 1-5"
 
-    dockerCommand: >-
-      sh -c 'mkdir -p "$JOB_HARVESTER_MANAGEMENT_DATA_DIR" && cp /etc/secrets/cv-keywords.md /etc/secrets/applied-companies.txt "$JOB_HARVESTER_MANAGEMENT_DATA_DIR"/ && node dist/run-job-search.js'
+    # No secret-file staging: every state file is pulled from Drive by the run itself.
+    dockerCommand: node dist/run-job-search.js
 
     envVars:
       # --- Run layout ---
