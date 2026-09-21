@@ -10,7 +10,12 @@ import * as path from 'path';
 import * as logger from './utils/logger';
 import { loadEnvFileIfProvided } from './utils/env-loader';
 import { assertValidRunDirName, requireExistingRunDir, resolveRootWorkDirFromEnv } from './utils/run-dir';
-import { pullProcessedUrls, pushProcessedUrls, resolveDriveSyncConfig } from './utils/drive-sync';
+import {
+  pullOperatorStateFiles,
+  pullProcessedUrls,
+  pushProcessedUrls,
+  resolveDriveSyncConfig,
+} from './utils/drive-sync';
 import { MANAGEMENT_DATA_DIR } from './config';
 
 // Import all script main functions
@@ -72,17 +77,31 @@ function resolveManagementDataDirFromEnv(): string {
  */
 export async function syncStateFromDrive(dryRun: boolean): Promise<void> {
   if (dryRun) {
-    logger.info('[DRY RUN] Would pull processed-urls.json from Google Drive');
+    logger.info('[DRY RUN] Would pull processed-urls.json, applied-companies.txt and cv-keywords.md from Google Drive');
     return;
   }
 
   const config = resolveDriveSyncConfig();
   if (config === null) {
-    logger.info('Google Drive sync not configured — using local processed-urls.json');
+    logger.info('Google Drive sync not configured — using local state files');
     return;
   }
 
-  await pullProcessedUrls(resolveManagementDataDirFromEnv(), config);
+  const managementDataDir = resolveManagementDataDirFromEnv();
+  await pullProcessedUrls(managementDataDir, config);
+  // The operator-maintained files come down too, so a runner with no persistent disk
+  // has them without shipping them in the image or mounting them as read-only secrets.
+  // Pull only: applied-companies.txt records a human act, and the pipeline appending to
+  // it would filter out roles that were never actually applied for.
+  const pulled = await pullOperatorStateFiles(managementDataDir, config);
+  for (const [filename, ok] of Object.entries(pulled)) {
+    if (!ok) {
+      logger.warn(
+        `${filename} was not pulled from Drive — the stage that reads it will fall back ` +
+          'to whatever is on disk, which on an ephemeral runner is nothing'
+      );
+    }
+  }
 }
 
 /**

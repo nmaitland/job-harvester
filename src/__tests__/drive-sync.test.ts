@@ -8,7 +8,10 @@ import { google } from 'googleapis';
 import {
   resolveDriveSyncConfig,
   findRegistryFileId,
+  PULL_ONLY_STATE_FILES,
+  pullOperatorStateFiles,
   pullProcessedUrls,
+  pullStateFile,
   pushProcessedUrls,
   type DriveSyncConfig,
 } from '../utils/drive-sync';
@@ -215,5 +218,66 @@ describe('pushProcessedUrls', () => {
     mockFilesList.mockRejectedValue(new Error('drive unavailable'));
 
     await expect(pushProcessedUrls('/mgmt', CONFIG)).resolves.toBe(false);
+  });
+});
+
+
+describe('operator-maintained state files', () => {
+  it('pulls every file the operator owns, not just the registry', async () => {
+    mockFilesList.mockResolvedValue({ data: { files: [{ id: 'file-abc' }] } });
+    mockFilesGet.mockResolvedValue({ data: 'Acme Corp\nGlobex' });
+
+    const results = await pullOperatorStateFiles('/mgmt', CONFIG);
+
+    expect(Object.keys(results).sort()).toEqual(
+      [...PULL_ONLY_STATE_FILES].sort()
+    );
+    for (const filename of PULL_ONLY_STATE_FILES) {
+      expect(mockedFs.writeFile).toHaveBeenCalledWith(
+        path.join('/mgmt', filename),
+        'Acme Corp\nGlobex',
+        'utf-8'
+      );
+    }
+  });
+
+  it('keeps going when one file is missing', async () => {
+    // A stale keyword list still beats no run, so one absent file must not stop the
+    // others — on an ephemeral runner "stopped" means the whole pipeline loses its
+    // filters, not just one.
+    mockFilesList
+      .mockResolvedValueOnce({ data: { files: [] } })
+      .mockResolvedValue({ data: { files: [{ id: 'file-def' }] } });
+    mockFilesGet.mockResolvedValue({ data: 'keywords' });
+
+    const results = await pullOperatorStateFiles('/mgmt', CONFIG);
+
+    const values = Object.values(results);
+    expect(values).toContain(false);
+    expect(values).toContain(true);
+  });
+
+  it('never offers a push for an operator-owned file', () => {
+    // applied-companies.txt records a HUMAN act. If the pipeline could write it,
+    // "we sent you this job" would eventually be mistaken for "you applied", and the
+    // filter would start hiding roles that were never applied for. The absence of a
+    // push path is the guarantee; this test fails if one is ever added.
+    const driveSync = jest.requireActual<Record<string, unknown>>('../utils/drive-sync');
+    const pushes = Object.keys(driveSync).filter((name) => name.toLowerCase().includes('push'));
+
+    expect(pushes).toEqual(['pushProcessedUrls']);
+  });
+
+  it('pulls an arbitrary named file into the management directory', async () => {
+    mockFilesList.mockResolvedValue({ data: { files: [{ id: 'file-xyz' }] } });
+    mockFilesGet.mockResolvedValue({ data: 'Acme Corp' });
+
+    await pullStateFile('/mgmt', CONFIG, 'applied-companies.txt');
+
+    expect(mockedFs.writeFile).toHaveBeenCalledWith(
+      path.join('/mgmt', 'applied-companies.txt'),
+      'Acme Corp',
+      'utf-8'
+    );
   });
 });

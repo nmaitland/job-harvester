@@ -23,6 +23,29 @@ import * as logger from './logger';
 import { retry, withTimeout } from './http';
 
 const PROCESSED_URLS_FILENAME = 'processed-urls.json';
+
+/**
+ * State files kept in Drive, and the direction each one moves.
+ *
+ * The split is about WHO writes the file, not whether the pipeline reads it:
+ *
+ *   processed-urls.json    the PIPELINE writes it, every run. Pulled before discovery
+ *                          and pushed after upload, or dedupe resets on a runner with
+ *                          no persistent disk.
+ *   applied-companies.txt  the OPERATOR writes it, whenever they apply somewhere. Pull
+ *                          only — the pipeline must never append to it, because
+ *                          "applied" is a human act and inferring it from "we sent you
+ *                          this job" would quietly filter out roles never applied for.
+ *   cv-keywords.md         the OPERATOR writes it, rarely. Pull only.
+ *
+ * All three live in Drive rather than as Render Secret Files. A Secret File is
+ * read-only and edited through the Render dashboard, which is fine for something set
+ * once but wrong for applied-companies.txt: that changes weekly, and a file you must
+ * redeploy to edit is a file that goes stale. Stale here means the pipeline keeps
+ * surfacing jobs at companies already applied to — the filter defeated. Drive is also
+ * where the operator already reads the run output, so editing is where looking is.
+ */
+export const PULL_ONLY_STATE_FILES = ['applied-companies.txt', 'cv-keywords.md'] as const;
 const DRIVE_TIMEOUT_MS = 60000;
 const DRIVE_RETRY = { maxAttempts: 2, delayMs: 1000 } as const;
 
@@ -82,9 +105,10 @@ function escapeDriveQueryValue(value: string): string {
  */
 export async function findRegistryFileId(
   drive: drive_v3.Drive,
-  folderId: string
+  folderId: string,
+  filename: string = PROCESSED_URLS_FILENAME
 ): Promise<string | undefined> {
-  const nameClause = `name = '${escapeDriveQueryValue(PROCESSED_URLS_FILENAME)}'`;
+  const nameClause = `name = '${escapeDriveQueryValue(filename)}'`;
   const parentClause = `'${escapeDriveQueryValue(folderId)}' in parents`;
 
   const response = await withTimeout(
@@ -117,16 +141,17 @@ export async function findRegistryFileId(
  * pull or the pull failed. A false result is not fatal — the run continues with an
  * empty registry, which costs deduplication but produces correct output.
  */
-export async function pullProcessedUrls(
+export async function pullStateFile(
   managementDataDir: string,
-  config: DriveSyncConfig
+  config: DriveSyncConfig,
+  filename: string
 ): Promise<boolean> {
   try {
     const drive = createDriveClient(config);
-    const fileId = await findRegistryFileId(drive, config.folderId);
+    const fileId = await findRegistryFileId(drive, config.folderId, filename);
 
     if (fileId === undefined) {
-      logger.info(`No ${PROCESSED_URLS_FILENAME} in Drive yet — starting a fresh registry`);
+      logger.info(`No ${filename} in Drive yet — continuing without it`);
       return false;
     }
 
@@ -136,24 +161,48 @@ export async function pullProcessedUrls(
         DRIVE_RETRY
       ),
       DRIVE_TIMEOUT_MS,
-      'Drive registry download'
+      `Drive ${filename} download`
     );
 
     const raw: unknown = response.data;
     const content = typeof raw === 'string' ? raw : JSON.stringify(raw);
 
     await fs.mkdir(managementDataDir, { recursive: true });
-    await fs.writeFile(path.join(managementDataDir, PROCESSED_URLS_FILENAME), content, 'utf-8');
+    await fs.writeFile(path.join(managementDataDir, filename), content, 'utf-8');
 
-    logger.info(`Pulled ${PROCESSED_URLS_FILENAME} from Drive (${content.length} bytes)`);
+    logger.info(`Pulled ${filename} from Drive (${content.length} bytes)`);
     return true;
   } catch (error) {
     logger.warn(
-      `Could not pull ${PROCESSED_URLS_FILENAME} from Drive, continuing with local state: ` +
+      `Could not pull ${filename} from Drive, continuing with local state: ` +
         `${error instanceof Error ? error.message : String(error)}`
     );
     return false;
   }
+}
+
+/** Backwards-compatible alias: the registry is just one of the state files. */
+export async function pullProcessedUrls(
+  managementDataDir: string,
+  config: DriveSyncConfig
+): Promise<boolean> {
+  return pullStateFile(managementDataDir, config, PROCESSED_URLS_FILENAME);
+}
+
+/**
+ * Pull every operator-maintained state file. Each is independent: one missing or
+ * unreadable file must not stop the others, since a run with a stale keyword list is
+ * still far more useful than no run.
+ */
+export async function pullOperatorStateFiles(
+  managementDataDir: string,
+  config: DriveSyncConfig
+): Promise<Record<string, boolean>> {
+  const results: Record<string, boolean> = {};
+  for (const filename of PULL_ONLY_STATE_FILES) {
+    results[filename] = await pullStateFile(managementDataDir, config, filename);
+  }
+  return results;
 }
 
 /**
