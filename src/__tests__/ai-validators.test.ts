@@ -81,6 +81,7 @@ describe('parseScorePayload', () => {
       concerns: ['some coding expected'],
       red_flags: [],
       summary: 'Good fit',
+      location: 'Zürich, CH',
     });
 
     const parsed = parseScorePayload(raw);
@@ -89,6 +90,7 @@ describe('parseScorePayload', () => {
     expect(parsed.matchReasons).toEqual(['leadership']);
     expect(parsed.concerns).toEqual(['some coding expected']);
     expect(parsed.summary).toBe('Good fit');
+    expect(parsed.location).toBe('Zürich, CH');
   });
 
   it('falls back safely on malformed payload', () => {

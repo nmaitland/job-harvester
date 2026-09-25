@@ -24,6 +24,7 @@ interface ScoreVerdictFile {
   concerns?: string[];
   red_flags?: string[];
   summary?: string;
+  location?: string;
   scoredAt: string;
 }
 
@@ -155,7 +156,7 @@ function buildScoringPrompt(job: JobSpec, cvKeywords: string): string {
 
   return [
     'Score this job against the CV profile and return JSON only.',
-    'Required fields: jobId, company, title, url, score, reasoning.',
+    'Required fields: jobId, company, title, url, score, reasoning, location.',
     'Optional fields: verdict, match_reasons, concerns, red_flags, summary.',
     'Score rubric:',
     '- 9-10 excellent fit',
@@ -166,6 +167,10 @@ function buildScoringPrompt(job: JobSpec, cvKeywords: string): string {
     'Verdict thresholds: PASS 7-10, REVIEW 4-6, REJECT 0-3.',
     'Assess title and seniority and stack overlap and language requirements and coding ratio and industry fit.',
     'Negative signals: explicit German B2+, fully German posting, >50% coding focus, primary tech Rust/Go/Scala/SAP.',
+    'Location: the candidate lives in Zürich, Switzerland and will not relocate. Set "location" to the job location as written',
+    '(e.g. "Zürich, CH", "Toronto, Canada", "Remote (EU)"), or "Unknown". Hard rule: if the role is neither within roughly',
+    'one hour of Zürich (e.g. Zug, Winterthur, Baden, Aarau, Luzern, Basel) nor remote and open to Switzerland-based candidates,',
+    'score 0-1 whatever the other fit, and say so in reasoning.',
     '',
     `Job ID: ${job.id}`,
     `Company: ${job.company}`,
@@ -218,6 +223,9 @@ async function scoreOneJob(job: JobSpec, cvKeywords: string): Promise<ScoreVerdi
   }
   if (parsed.summary !== '') {
     output.summary = parsed.summary;
+  }
+  if (parsed.location !== '') {
+    output.location = parsed.location;
   }
 
   return output;

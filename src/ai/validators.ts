@@ -16,6 +16,7 @@ export interface ParsedScorePayload {
   concerns: string[];
   redFlags: string[];
   summary: string;
+  location: string;
 }
 
 interface ParsedCandidateRecord {
@@ -205,6 +206,7 @@ export function parseScorePayload(rawText: string): ParsedScorePayload {
       concerns: [],
       redFlags: [],
       summary: '',
+      location: '',
     };
   }
 
@@ -219,5 +221,6 @@ export function parseScorePayload(rawText: string): ParsedScorePayload {
     concerns: parseOptionalStringArray(parsed.concerns),
     redFlags: parseOptionalStringArray(parsed.red_flags),
     summary: asString(parsed.summary),
+    location: asString(parsed.location),
   };
 }

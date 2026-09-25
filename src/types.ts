@@ -95,6 +95,7 @@ export interface JobScore {
   url: string;
   score: number;
   reasoning: string;
+  location?: string;
   scoredAt: string;
 }
 
@@ -119,6 +120,7 @@ export interface CompiledJob {
   specText: string;
   score: number;
   reasoning: string;
+  location?: string | undefined;
   passedPreFilter: boolean;
   rejectionReason: RejectionReason | undefined;
   status: 'scored' | 'rejected_prefilter';

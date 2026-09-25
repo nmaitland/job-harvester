@@ -107,6 +107,14 @@ services:
       - key: GOOGLE_DRIVE_FOLDER_ID
         sync: false
 
+      # --- Digest email (Gmail SMTP, app password) ---
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: DIGEST_EMAIL_TO
+        sync: false
+
       # LINKEDIN_USERNAME / LINKEDIN_PASSWORD are deliberately unset: discover.ts
       # skips the stage when they are empty. A headless login from a fresh
       # datacenter IP tends to hit a checkpoint challenge, and LinkedIn postings
