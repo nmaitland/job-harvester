@@ -51,7 +51,7 @@ interface BrightdataResponse {
   snapshot_id?: string;
 }
 
-interface BrightdataDatasetItem {
+export interface BrightdataDatasetItem {
   error?: string;
   job_description_formatted?: string;
   job_summary?: string;
@@ -60,7 +60,33 @@ interface BrightdataDatasetItem {
   qualifications?: string;
   responsibilities?: string;
   company?: string;
-  skills?: string;
+  company_name?: string;
+  location?: string;
+  skills?: string | string[];
+}
+
+/**
+ * Parse a DCA dataset poll body: the records when ready, null while still building.
+ * A single-URL collection comes back as one object rather than an array.
+ */
+export function parseDcaPoll(body: string): BrightdataDatasetItem[] | null {
+  // Empty body = finished with no records (dead or truncated URL); polling longer won't help.
+  if (body.trim() === '') {
+    return [];
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return null;
+  }
+  if (Array.isArray(parsed)) {
+    return parsed as BrightdataDatasetItem[];
+  }
+  if (parsed !== null && typeof parsed === 'object' && !('status' in parsed)) {
+    return [parsed as BrightdataDatasetItem];
+  }
+  return null;
 }
 
 /**
@@ -242,9 +268,8 @@ export async function fetchJobAgent(job: DiscoveredJob): Promise<FetchResult> {
 
         const pollData = await pollResponse.text();
 
-        // Check if ready (starts with '[')
-        if (pollData.trim().startsWith('[')) {
-          const data = JSON.parse(pollData) as BrightdataDatasetItem[];
+        const data = parseDcaPoll(pollData);
+        if (data !== null) {
 
           // Check for crawler error
           if (data[0]?.error !== undefined) {
@@ -341,9 +366,8 @@ export async function fetchWellfound(job: DiscoveredJob): Promise<FetchResult> {
 
         const pollData = await pollResponse.text();
 
-        // Check if ready
-        if (pollData.trim().startsWith('[')) {
-          const data = JSON.parse(pollData) as BrightdataDatasetItem[];
+        const data = parseDcaPoll(pollData);
+        if (data !== null) {
 
           // Check for crawler error
           if (data[0]?.error !== undefined) {
@@ -357,6 +381,8 @@ export async function fetchWellfound(job: DiscoveredJob): Promise<FetchResult> {
 
         if (pollData.includes('"status":"building"')) {
           logger.info(`Wellfound still building (poll ${poll}/${maxPolls})`);
+        } else {
+          logger.warn(`Wellfound poll: unexpected response: ${pollData.slice(0, 200)}`);
         }
       }
     } catch (error) {
@@ -590,10 +616,12 @@ export function extractWellfoundText(data: unknown[]): string {
   }
 
   const job = data[0] as BrightdataDatasetItem;
+  const skills = Array.isArray(job.skills) ? job.skills.join(', ') : job.skills;
   const parts = [
     job.job_title,
-    job.company,
-    job.skills,
+    job.company ?? job.company_name,
+    job.location,
+    skills,
     job.job_description,
   ].filter((item): item is string => item !== undefined && item !== '');
 
