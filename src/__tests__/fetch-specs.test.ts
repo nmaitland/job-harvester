@@ -4,6 +4,7 @@
 
 import {
   routeByUrl,
+  rejectNearEmptySpec,
   fetchLinkedIn,
   normalizeLinkedInUrl,
   extractLinkedInText,
@@ -248,5 +249,19 @@ describe('extractWellfoundText', () => {
 
   it('should return empty string for empty array', () => {
     expect(extractWellfoundText([])).toBe('');
+  });
+});
+
+describe('rejectNearEmptySpec', () => {
+  it('fails a successful fetch that returned almost no text', () => {
+    const result = rejectNearEmptySpec({ success: true, error: undefined, specText: 'Job closed.', jsonData: {} });
+    expect(result).toEqual({ success: false, error: 'spec_too_short', specText: '', jsonData: null });
+  });
+
+  it('keeps a real spec and leaves failures untouched', () => {
+    const spec = { success: true, error: undefined, specText: 'x'.repeat(400), jsonData: null };
+    const failed = { success: false, error: 'HTTP 401', specText: '', jsonData: null };
+    expect(rejectNearEmptySpec(spec)).toBe(spec);
+    expect(rejectNearEmptySpec(failed)).toBe(failed);
   });
 });

@@ -66,6 +66,19 @@ interface BrightdataDatasetItem {
 /**
  * Route job to appropriate fetcher based on URL
  */
+export const MIN_SPEC_CHARS = 300;
+
+/**
+ * Closed postings, cookie walls and error pages come back "successful" but near-empty.
+ * Count them as failures so they stop reaching scoring.
+ */
+export function rejectNearEmptySpec(result: FetchResult): FetchResult {
+  if (result.success && result.specText.trim().length < MIN_SPEC_CHARS) {
+    return { success: false, error: 'spec_too_short', specText: '', jsonData: null };
+  }
+  return result;
+}
+
 export function routeByUrl(url: string): 'linkedin' | 'jobagent' | 'wellfound' | 'web' {
   if (url.includes('linkedin.com')) {
     return 'linkedin';
@@ -362,7 +375,9 @@ export async function fetchWeb(job: DiscoveredJob): Promise<FetchResult> {
 
   try {
     const page = await browser.newPage();
-    await withTimeout(page.goto(job.url, { waitUntil: 'networkidle' }), 90000, 'Web fetch page.goto');
+    // Not 'networkidle': ad- and tracker-heavy pages never go quiet and time out.
+    await withTimeout(page.goto(job.url, { waitUntil: 'domcontentloaded', timeout: 45000 }), 90000, 'Web fetch page.goto');
+    await page.waitForTimeout(2000); // let client-rendered job boards fill in
 
     // Get text content
     const text = await page.evaluate((): string => {
@@ -637,6 +652,8 @@ export async function main(runDirArg?: string): Promise<void> {
         default:
           result = { success: false, error: 'Unknown fetcher', specText: '', jsonData: null };
       }
+
+      result = rejectNearEmptySpec(result);
 
       const timestamp = new Date().toISOString();
       const safeTimestamp = timestamp.replace(/[:.]/g, '-');

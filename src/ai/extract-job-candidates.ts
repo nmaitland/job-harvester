@@ -22,6 +22,12 @@ function buildExtractionPrompt(content: string, context: ExtractCandidateContext
     '- Include only concrete job posting URLs, not unsubscribe or tracking links',
     '- Exclude generic company links without a specific role',
     '- If title is unclear, return "Unknown role"',
+    ...(context.type === 'webpage'
+      ? [
+        '- If the page itself is a single job posting, include it using the Source URL',
+        '- News, blog and guide articles are not job postings; return no candidates for them',
+      ]
+      : []),
     '',
     context.hint ?? '',
     '',

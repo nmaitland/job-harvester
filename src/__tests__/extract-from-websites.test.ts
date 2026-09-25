@@ -1,7 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { DiscoveredJob } from '../types';
-import { mergeWebsiteCandidatesIntoDiscovered, runWebsiteExtraction } from '../extract-from-websites';
+import { mergeWebsiteCandidatesIntoDiscovered, runWebsiteExtraction, stripHtmlToText } from '../extract-from-websites';
 import type { ExtractedJobCandidate } from '../ai/validators';
 import { extractJobCandidates } from '../ai/extract-job-candidates';
 
@@ -270,5 +270,44 @@ describe('runWebsiteExtraction', () => {
     });
     expect(mockedExtractJobCandidates).not.toHaveBeenCalled();
     expect(mockedFs.writeFile).toHaveBeenCalledTimes(2);
+  });
+
+  it('replaces raw Brave hits with extracted jobs, keeping a self-link posting', async () => {
+    mockedFs.readFile.mockRejectedValueOnce(new Error('no processed registry yet'));
+    mockedFs.readFile.mockResolvedValueOnce(
+      JSON.stringify({
+        jobs: [
+          { id: 'b1', company: 'Unknown', title: 'Solar news', url: 'https://news.example/solar', source: 'brave', discoveredAt: '2026-02-24T00:00:00.000Z' },
+          { id: 'b2', company: 'Acme', title: 'CTO', url: 'https://acme.example/jobs/1', source: 'brave', discoveredAt: '2026-02-24T00:00:00.000Z' },
+          { id: 'g1', company: 'Inbox Corp', title: 'CTO', url: 'https://inbox.example/jobs/1', source: 'gmail', discoveredAt: '2026-02-24T00:00:00.000Z' },
+        ],
+      })
+    );
+    (globalThis as unknown as { fetch: jest.Mock }).fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => '<html><body>Page</body></html>',
+    });
+    mockedExtractJobCandidates
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ company: 'Acme', title: 'CTO', url: 'https://acme.example/jobs/1' }]);
+
+    await runWebsiteExtraction(runDir);
+
+    const discoveredCall = mockedFs.writeFile.mock.calls.find(call => String(call[0]).endsWith('discovered-jobs.json'));
+    const written = JSON.parse(discoveredCall?.[1] as string) as { jobs: DiscoveredJob[] };
+    expect(written.jobs.map(job => [job.source, job.url])).toEqual([
+      ['gmail', 'https://inbox.example/jobs/1'],
+      ['brave-extracted', 'https://acme.example/jobs/1'],
+    ]);
+  });
+});
+
+describe('stripHtmlToText', () => {
+  it('keeps absolute link targets so the extractor can see job URLs', () => {
+    const html = '<p>Open roles: <a class="x" href="/jobs/42">Head of Engineering</a> <a href="mailto:hr@x.ch">Mail</a></p>';
+    expect(stripHtmlToText(html, 'https://careers.example.ch/team')).toBe(
+      'Open roles: Head of Engineering (https://careers.example.ch/jobs/42) Mail'
+    );
   });
 });
