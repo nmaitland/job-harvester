@@ -6,7 +6,7 @@ import { loadEnvFileIfProvided } from './utils/env-loader';
 import { requestOpenRouterChat } from './ai/openrouter-client';
 import { resolveRequiredRunDirFromCli } from './utils/run-dir';
 
-interface RunFacts {
+export interface RunFacts {
   runDir: string;
   timestamp: string;
   runDate: string;
@@ -68,7 +68,7 @@ function parseRunDate(runDir: string, fallbackIsoTimestamp: string): string {
   return fallbackIsoTimestamp;
 }
 
-function sanitizeTitle(title: string): string {
+export function sanitizeTitle(title: string): string {
   const withoutCarriageReturns = title.replace(/\r/g, '').trim();
   const firstLine = withoutCarriageReturns.split('\n')[0]?.trim() ?? '';
   let cleaned = firstLine.replace(/\s+/g, ' ').replace(/\s+with verification$/i, '').trim();
@@ -113,7 +113,7 @@ function buildReviewRows(reviewable: CompiledJob[]): ReviewRow[] {
   }));
 }
 
-async function collectFacts(runDir: string): Promise<{ facts: RunFacts; reviewable: CompiledJob[] }> {
+export async function collectFacts(runDir: string): Promise<{ facts: RunFacts; reviewable: CompiledJob[] }> {
   const now = new Date().toISOString();
   const discovered = await readJsonIfExists<DiscoveryOutput>(path.join(runDir, 'discovered-jobs.json'));
   const fetched = await readJsonIfExists<FetchOutput>(path.join(runDir, 'fetched-specs.json'));

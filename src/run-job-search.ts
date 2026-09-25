@@ -29,6 +29,7 @@ import { main as compileResultsMain } from './compile-results';
 import { main as generatePdfsMain } from './generate-pdfs';
 import { main as summarizeRunMain } from './summarize-run';
 import { main as uploadMain } from './upload';
+import { main as sendDigestMain } from './send-digest';
 
 type Phase = 'all' | 'discovery' | 'email-processing' | 'fetch-and-filter' | 'scoring' | 'output';
 
@@ -343,6 +344,9 @@ export async function runScript(scriptName: string, _runDir: string, dryRun: boo
       case 'upload':
         await uploadMain(_runDir);
         break;
+      case 'send-digest':
+        await sendDigestMain(_runDir);
+        break;
       default:
         throw new Error(`Unknown script: ${scriptName}`);
     }
@@ -405,6 +409,8 @@ export async function runOutputPhase(runDir: string, dryRun: boolean): Promise<v
   await runScript('summarize-run', runDir, dryRun);
   await runScript('upload', runDir, dryRun);
   await syncStateToDrive(dryRun);
+  // Last, after state is saved: a send failure fails the run without losing dedupe state.
+  await runScript('send-digest', runDir, dryRun);
 }
 
 /**

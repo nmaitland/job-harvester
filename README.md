@@ -85,6 +85,8 @@ Copy `.env.example` to `.env` and fill in the values you need. All discovery sou
 | `ONEDRIVE_ACCESS_TOKEN` | Microsoft Graph access token for OneDrive uploads |
 | `GOOGLE_DRIVE_IMPERSONATED_USER` | Drive user to impersonate |
 | `GOOGLE_DRIVE_FOLDER_ID` | Target folder in Google Drive |
+| `SMTP_USER` / `SMTP_PASSWORD` | Gmail account and app password for the digest email (skipped if unset) |
+| `DIGEST_EMAIL_TO` | Digest recipient (defaults to `SMTP_USER`) |
 
 ### Tuning
 
