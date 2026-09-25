@@ -53,12 +53,14 @@ function job(overrides: Partial<CompiledJob>): CompiledJob {
 describe('buildDigest', () => {
   it('lists jobs with links, first-sentence reasons, and escaped text', () => {
     const { subject, html } = buildDigest(facts, [
-      job({}),
+      job({ location: 'Zürich, CH' }),
       job({ jobId: 'j2', company: 'R&D <Co>', title: 'Head of "AI"', score: 5 }),
     ]);
 
     expect(subject).toBe('Jobs 2026/09/25: 2 worth a look');
     expect(html).toContain('<a href="https://example.com/job/1">Engineering Manager</a>');
+    expect(html).toContain('Acme · Zürich, CH · example.com<br>');
+    expect(html).toContain('R&amp;D &lt;Co&gt; · example.com<br>');
     expect(html).toContain('Strong leadership match.');
     expect(html).not.toContain('Extra detail');
     expect(html).toContain('R&amp;D &lt;Co&gt;');

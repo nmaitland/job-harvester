@@ -201,6 +201,7 @@ export async function compileResults(runDir: string): Promise<CompileOutput> {
       specText: survivor.specText,
       score: jobScore.score,
       reasoning: jobScore.reasoning,
+      location: jobScore.location,
       rejectionReason: undefined,
       passedPreFilter: true,
       status: 'scored',

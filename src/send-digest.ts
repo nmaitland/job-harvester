@@ -36,13 +36,25 @@ function shortReason(reasoning: string): string {
     : firstSentence;
 }
 
+function siteOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
 function renderJob(job: CompiledJob): string {
   const title = escapeHtml(sanitizeTitle(job.title));
   const url = escapeHtml(job.url.trim());
+  const details = [job.company.trim(), job.location?.trim() ?? '', siteOf(job.url.trim())]
+    .filter(part => part !== '')
+    .map(escapeHtml)
+    .join(' · ');
   return [
     '<p style="margin:0 0 14px">',
     `<b>${job.score}</b> · <a href="${url}">${title}</a><br>`,
-    `${escapeHtml(job.company.trim())}<br>`,
+    `${details}<br>`,
     `<span style="color:#666">${escapeHtml(shortReason(job.reasoning))}</span>`,
     '</p>',
   ].join('');
