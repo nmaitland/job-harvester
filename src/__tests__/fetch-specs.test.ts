@@ -4,6 +4,8 @@
 
 import {
   routeByUrl,
+  rejectNearEmptySpec,
+  parseDcaPoll,
   fetchLinkedIn,
   normalizeLinkedInUrl,
   extractLinkedInText,
@@ -248,5 +250,53 @@ describe('extractWellfoundText', () => {
 
   it('should return empty string for empty array', () => {
     expect(extractWellfoundText([])).toBe('');
+  });
+});
+
+describe('rejectNearEmptySpec', () => {
+  it('fails a successful fetch that returned almost no text', () => {
+    const result = rejectNearEmptySpec({ success: true, error: undefined, specText: 'Job closed.', jsonData: {} });
+    expect(result).toEqual({ success: false, error: 'spec_too_short', specText: '', jsonData: null });
+  });
+
+  it('keeps a real spec and leaves failures untouched', () => {
+    const spec = { success: true, error: undefined, specText: 'x'.repeat(400), jsonData: null };
+    const failed = { success: false, error: 'HTTP 401', specText: '', jsonData: null };
+    expect(rejectNearEmptySpec(spec)).toBe(spec);
+    expect(rejectNearEmptySpec(failed)).toBe(failed);
+  });
+});
+
+describe('parseDcaPoll', () => {
+  it('returns null while the dataset is building', () => {
+    expect(parseDcaPoll('{"status":"building","message":"Dataset is not ready yet, try again in 30s"}')).toBeNull();
+    expect(parseDcaPoll('not json')).toBeNull();
+  });
+
+  it('wraps a single-record object, as returned for one-URL collections', () => {
+    expect(parseDcaPoll('{"job_title":"Product Manager","company_name":"Nearcut"}')).toEqual([
+      { job_title: 'Product Manager', company_name: 'Nearcut' },
+    ]);
+  });
+
+  it('treats an empty body as finished with no records', () => {
+    expect(parseDcaPoll('')).toEqual([]);
+  });
+
+  it('passes arrays through', () => {
+    expect(parseDcaPoll('[{"job_title":"CTO"}]')).toEqual([{ job_title: 'CTO' }]);
+  });
+});
+
+describe('extractWellfoundText with current collector fields', () => {
+  it('uses company_name, location and array skills', () => {
+    const text = extractWellfoundText([{
+      job_title: 'Product Manager',
+      company_name: 'Nearcut',
+      location: 'Remote ( Europe )',
+      skills: ['Roadmaps', 'SaaS'],
+      job_description: 'Details',
+    }]);
+    expect(text).toBe('Product Manager\n\nNearcut\n\nRemote ( Europe )\n\nRoadmaps, SaaS\n\nDetails');
   });
 });

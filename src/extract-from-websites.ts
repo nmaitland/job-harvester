@@ -197,8 +197,25 @@ function buildJobId(basePrefix: string, existingIds: Set<string>): string {
   throw new Error(`Unable to generate unique Brave extracted job id for prefix ${basePrefix}`);
 }
 
-function stripHtmlToText(html: string): string {
-  return html
+function absoluteHttpUrl(href: string, baseUrl: string): string | null {
+  try {
+    const url = new URL(href, baseUrl);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function stripHtmlToText(html: string, baseUrl?: string): string {
+  // Keep link targets as "text (url)" so the extractor can see where job links point.
+  const withLinks = baseUrl === undefined
+    ? html
+    : html.replace(/<a\s[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_match, href: string, text: string) => {
+      const url = absoluteHttpUrl(href, baseUrl);
+      return url === null ? ` ${text} ` : ` ${text} (${url}) `;
+    });
+
+  return withLinks
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
@@ -221,7 +238,7 @@ async function fetchWebsiteContent(url: string): Promise<string> {
   }
 
   const rawBody = await response.text();
-  const bodyText = stripHtmlToText(rawBody);
+  const bodyText = stripHtmlToText(rawBody, url);
   return bodyText.slice(0, getSearchHitsMaxPageChars());
 }
 
@@ -382,7 +399,11 @@ export async function runWebsiteExtraction(runDir: string): Promise<WebsiteExtra
   }
 
   const discoveredAt = new Date().toISOString();
-  const merged = mergeWebsiteCandidatesIntoDiscovered(discovered.jobs, allCandidates, discoveredAt, processedUrlSet);
+  // Raw Brave hits are search results, mostly news and blog pages, not postings. They are
+  // replaced by what the extractor found on them, which includes the page itself when it
+  // is a single posting. Dropped before merging so that self-link is not a "duplicate".
+  const nonBraveJobs = discovered.jobs.filter(job => job.source !== 'brave');
+  const merged = mergeWebsiteCandidatesIntoDiscovered(nonBraveJobs, allCandidates, discoveredAt, processedUrlSet);
   const nextDocument: Record<string, unknown> = {
     ...discovered.document,
     jobs: merged.jobs,
