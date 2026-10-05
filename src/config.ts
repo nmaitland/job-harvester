@@ -40,6 +40,9 @@ export const BRIGHTDATA_COLLECTORS = {
 // Filter Configuration
 // ============================================================================
 
+// LinkedIn's posted date is approximate ("2 months ago"), so leave headroom.
+export const MAX_JOB_AGE_DAYS = 90;
+
 export const JUNIOR_KEYWORDS = [
   'junior',
   'entry level',

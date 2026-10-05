@@ -255,6 +255,35 @@ describe('applyFilters', () => {
     expect(result).toBe('junior_role');
   });
 
+  describe('listing freshness', () => {
+    const now = new Date('2026-10-05T00:00:00Z');
+    const spec: JobSpec = {
+      id: '1',
+      company: 'New Company',
+      title: 'Senior Developer',
+      url: 'https://example.com/new',
+      source: 'linkedin',
+      discoveredAt: '2026-10-04',
+      specText: '',
+      fetchStatus: 'success',
+      fetchError: undefined,
+      fetchedAt: '2026-10-04',
+    };
+
+    it('rejects listings no longer accepting applications', () => {
+      expect(applyFilters({ ...spec, acceptingApplications: false }, appliedCompanies, processedUrls, now)).toBe('closed');
+    });
+
+    it('rejects listings older than the max age', () => {
+      expect(applyFilters({ ...spec, postedAt: '2026-05-05T00:00:00Z' }, appliedCompanies, processedUrls, now)).toBe('stale');
+    });
+
+    it('keeps recent open listings and listings without metadata', () => {
+      expect(applyFilters({ ...spec, postedAt: '2026-08-05T00:00:00Z', acceptingApplications: true }, appliedCompanies, processedUrls, now)).toBeNull();
+      expect(applyFilters(spec, appliedCompanies, processedUrls, now)).toBeNull();
+    });
+  });
+
   it('should return null for passing jobs', () => {
     const spec: JobSpec = {
       id: '1',

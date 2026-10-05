@@ -40,6 +40,9 @@ export interface JobSpec {
   fetchStatus: 'success' | 'failed';
   fetchError: string | undefined;
   fetchedAt: string;
+  /** Listing metadata, when the source exposes it (currently LinkedIn only). */
+  postedAt?: string | undefined;
+  acceptingApplications?: boolean | undefined;
 }
 
 export interface FetchOutput {
@@ -60,7 +63,9 @@ export type RejectionReason =
   | 'fetch_failed'
   | 'already_applied'
   | 'already_sent'
-  | 'junior_role';
+  | 'junior_role'
+  | 'closed'
+  | 'stale';
 
 export interface FilterVerdict {
   jobId: string;
