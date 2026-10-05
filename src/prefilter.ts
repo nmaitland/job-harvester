@@ -8,7 +8,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { JobSpec, FilterVerdict, PreFilterOutput, RejectionReason } from './types';
-import { JUNIOR_KEYWORDS, MANAGEMENT_DATA_DIR } from './config';
+import { JUNIOR_KEYWORDS, MANAGEMENT_DATA_DIR, MAX_JOB_AGE_DAYS } from './config';
 import * as logger from './utils/logger';
 import { loadEnvFileIfProvided } from './utils/env-loader';
 import { resolveRequiredRunDirFromCli } from './utils/run-dir';
@@ -164,7 +164,8 @@ export function isJuniorRole(title: string): boolean {
 export function applyFilters(
   spec: JobSpec,
   appliedCompanies: Set<string>,
-  processedUrls: Set<string>
+  processedUrls: Set<string>,
+  now: Date = new Date()
 ): RejectionReason | null {
   // Filter 1: fetch_failed
   if (spec.fetchStatus === 'failed') {
@@ -188,6 +189,19 @@ export function applyFilters(
     return 'junior_role';
   }
   
+  // Filter 5: closed listing
+  if (spec.acceptingApplications === false) {
+    return 'closed';
+  }
+
+  // Filter 6: stale listing
+  if (spec.postedAt !== undefined) {
+    const ageDays = (now.getTime() - Date.parse(spec.postedAt)) / 86_400_000;
+    if (ageDays > MAX_JOB_AGE_DAYS) {
+      return 'stale';
+    }
+  }
+
   // All filters passed
   return null;
 }
@@ -213,6 +227,8 @@ export async function runPreFilter(specs: JobSpec[]): Promise<PreFilterOutput> {
     already_applied: 0,
     already_sent: 0,
     junior_role: 0,
+    closed: 0,
+    stale: 0,
   };
   
   for (const spec of specs) {
@@ -299,6 +315,8 @@ export async function main(runDirArg?: string): Promise<void> {
     logger.info(`    - already_applied: ${result.stats.byReason.already_applied}`);
     logger.info(`    - already_sent: ${result.stats.byReason.already_sent}`);
     logger.info(`    - junior_role: ${result.stats.byReason.junior_role}`);
+    logger.info(`    - closed: ${result.stats.byReason.closed}`);
+    logger.info(`    - stale: ${result.stats.byReason.stale}`);
     
   } catch (error) {
     logger.error(`Pre-filter failed: ${error instanceof Error ? error.message : String(error)}`);

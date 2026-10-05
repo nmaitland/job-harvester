@@ -63,6 +63,8 @@ export interface BrightdataDatasetItem {
   company_name?: string;
   location?: string;
   skills?: string | string[];
+  job_posted_date?: string;
+  application_availability?: boolean;
 }
 
 /**
@@ -425,6 +427,14 @@ export async function fetchWeb(job: DiscoveredJob): Promise<FetchResult> {
 /**
  * Extract text from LinkedIn response
  */
+export function extractLinkedInListingMeta(data: unknown): Pick<JobSpec, 'postedAt' | 'acceptingApplications'> {
+  const item = (Array.isArray(data) ? data[0] : data) as BrightdataDatasetItem | null | undefined;
+  return {
+    postedAt: item?.job_posted_date,
+    acceptingApplications: item?.application_availability,
+  };
+}
+
 export function extractLinkedInText(data: unknown): string {
   const items = Array.isArray(data) ? data : [data];
   if (items.length === 0 || items[0] === undefined || items[0] === null) {
@@ -719,6 +729,7 @@ export async function main(runDirArg?: string): Promise<void> {
         fetchStatus: result.success ? 'success' : 'failed',
         fetchError: result.error,
         fetchedAt: timestamp,
+        ...(result.success && routeByUrl(job.url) === 'linkedin' ? extractLinkedInListingMeta(result.jsonData) : {}),
       };
 
       specs.push(spec);
